@@ -8,7 +8,7 @@ load barrel_nobarrel_data.mat
 %% convert barrel pixels to YCbCr and store
 fprintf('Gathering pixel data...\n')
 data = [];
-for i = 1:length(file_names)
+for i = 1:1%length(file_names)
     im = rgb2ycbcr(imread(file_names{i}));
     Y = im(:,:,1);
     Cb = im(:,:,2);

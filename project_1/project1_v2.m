@@ -43,9 +43,9 @@ axis equal
 drawnow
 %}
 %% create gaussians and initialize GMM
-fprintf('Initializing parameters...')
+fprintf('Initializing parameters...\n')
 [n,d] = size(data);
-k = 4;
+k = 2;
 A = cell(k,1);
 mu = zeros(k,d);
 w = zeros(1,k);
@@ -62,11 +62,17 @@ P(P<eps) = eps;
 L = 1/n*sum(log(P*w'));
 
 %% start EM
+fprintf('Starting EM...\n')
 done = 0;
 gamma = zeros(n,k);
 iterator = 1;
+delta = 0.002;
+L_new = 0;
+current_delta = abs(L-L_new);
 while ~done
-    %fprintf('iteration: %d\n',iterator);
+    % progress print statement
+    fprintf('iteration: %d\tdelta: %6.6f\ttarget delta: %6.6f\n',iterator, current_delta, delta);
+    
     % E-step
     gamma = bsxfun(@rdivide,bsxfun(@times,w,P),P*w');
     dumb_n = sum(gamma);
@@ -85,18 +91,19 @@ while ~done
     L_new = 1/n*sum(log(P*w'));
     
     % check exit condition
-    if abs(L-L_new) < 0.001
+    if abs(L-L_new) < delta
         done = 1;
     end
-    abs(L_new-L)
+    current_delta = abs(L-L_new);
     L = L_new;
     iterator = iterator+1;
 end
-    
+%{d
 %% plot stuff
 figure(1)
 clf
-plot3(data(1:100:end,1),data(1:100:end,2),data(1:100:end,3),'.')
+sparsity = 10;
+plot3(data(1:sparsity:end,1),data(1:sparsity:end,2),data(1:sparsity:end,3),'.')
 axis equal
 lims = [0 255];
 grid on
@@ -113,3 +120,20 @@ for i = 1:k
     alpha(0.1)
 end
 drawnow
+%}
+
+%% test classifications
+for i = 1:length(file_names)
+    im = rgb2ycbcr(imread(file_names{i}));
+    [n,d,~] = size(im);
+    Y = reshape(im(:,:,1),n*d,1);
+    Cb = reshape(im(:,:,2),n*d,1);
+    Cr = reshape(im(:,:,3),n*d,1);
+    colors = double([Y Cb Cr]);
+    for j = 1:k
+        P(:,j) = compute_gaussian_density(colors,mu(j,:),A{i});
+    end
+    gamma = bsxfun(@rdivide,bsxfun(@times,w,P),P)
+    
+    
+end
