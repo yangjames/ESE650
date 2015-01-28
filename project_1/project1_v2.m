@@ -18,12 +18,13 @@ for i = 1:length(file_names)
     Cr = Cr(coords{1});
 
     clear im
-    data = [data;Y Cb Cr];
+    data = [data; Cb Cr];
     clear Y Cb Cr
 end
 data = double(data);
 %}
 %{
+%% intialize toy a
 test_mu1 = [0.9 0.5 5];
 test_sigma1 = 0.1*eye(3)
 test_mu2 = [10 5 7];
@@ -45,7 +46,7 @@ drawnow
 %% create gaussians and initialize GMM
 fprintf('Initializing parameters...\n')
 [n,d] = size(data);
-k = 2;
+k = 4;
 A = cell(k,1);
 mu = zeros(k,d);
 w = zeros(1,k);
@@ -71,7 +72,7 @@ L_new = 0;
 current_delta = abs(L-L_new);
 while ~done
     % progress print statement
-    fprintf('iteration: %d\tdelta: %6.6f\ttarget delta: %6.6f\n',iterator, current_delta, delta);
+    fprintf('iteration: %d | delta: %6.6f | target delta: %6.6f\n',iterator, current_delta, delta);
     
     % E-step
     gamma = bsxfun(@rdivide,bsxfun(@times,w,P),P*w');
@@ -98,7 +99,23 @@ while ~done
     L = L_new;
     iterator = iterator+1;
 end
-%{d
+model.weight = w;
+model.mean = mu;
+model.cov = A;
+model.num_clusters = k;
+
+%% plot stuff
+figure(1)
+clf
+sparsity = 10;
+plot(data(1:sparsity:end,1),data(1:sparsity:end,2),'.')
+axis equal
+grid on
+hold on
+for i = 1:model.num_clusters
+    
+end
+%{
 %% plot stuff
 figure(1)
 clf
@@ -109,14 +126,24 @@ lims = [0 255];
 grid on
 hold on
 for i = 1:k
-    [U,L] = eig(A{i});
-    N = 1;
-    radii = N*sqrt(diag(L));
-    [xc,yc,zc] = ellipsoid(0,0,0,radii(1),radii(2),radii(3));
-    a = kron(U(:,1),xc); b = kron(U(:,2),yc); c = kron(U(:,3),zc);
-    data = a+b+c; n = size(data,2);
-    x = data(1:n,:)+mu(i,1); y = data(n+1:2*n,:)+mu(i,2); z = data(2*n+1:end,:)+mu(i,3);
-    surf(x,y,z);
+    % get principle components of covariance matrix
+    [V,Lambda] = eig(model.cov{i});
+    R = 1;
+    prin_comps = R*sqrt(diag(Lambda));
+    
+    % make an ellipsoid
+    [xe,ye,ze] = ellipsoid(0,0,0,prin_comps(1),prin_comps(2),prin_comps(3));
+    
+    % rotate axis aligned ellipse
+    rot_el = kron(V(:,1),xe) + kron(V(:,2),ye) + kron(V(:,3),ze);
+    
+    % get ellipse surface points
+    rot_x = rot_el(1:size(rot_el,2),:)+model.mean(i,1);
+    rot_y = rot_el(size(rot_el,2)+1:2*size(rot_el,2),:)+model.mean(i,2);
+    rot_z = rot_el(2*size(rot_el,2)+1:end,:)+model.mean(i,3);
+    
+    % plot ellipse
+    surf(rot_x,rot_y,rot_z);
     alpha(0.1)
 end
 drawnow
@@ -124,16 +151,46 @@ drawnow
 
 %% test classifications
 for i = 1:length(file_names)
-    im = rgb2ycbcr(imread(file_names{i}));
-    [n,d,~] = size(im);
-    Y = reshape(im(:,:,1),n*d,1);
-    Cb = reshape(im(:,:,2),n*d,1);
-    Cr = reshape(im(:,:,3),n*d,1);
-    colors = double([Y Cb Cr]);
-    for j = 1:k
-        P(:,j) = compute_gaussian_density(colors,mu(j,:),A{i});
+    % get image
+    rgbim = imread(file_names{i});
+    G = fspecial('gaussian',[5 5],2);
+    rgbim = imfilter(rgbim,G,'same');
+    
+    im = rgb2ycbcr(rgbim);
+    [r,c,~] = size(im);
+    % get pixel values
+    Y = reshape(im(:,:,1),r*c,1);
+    Cb = reshape(im(:,:,2),r*c,1);
+    Cr = reshape(im(:,:,3),r*c,1);
+    colors = double([ Cb Cr]);
+    
+    % calculate probability density and Mahalanobis distance of each pixel
+    P = zeros(r*c,model.num_clusters);
+    DM = zeros(r*c,model.num_clusters);
+    for j = 1:model.num_clusters
+        P(:,j) = compute_gaussian_density(colors,model.mean(j,:),model.cov{j});
+        mean_centered = bsxfun(@minus,colors,model.mean(j,:));
+        DM(:,j) = sqrt(sum((mean_centered/A{j}).*mean_centered,2));
     end
-    gamma = bsxfun(@rdivide,bsxfun(@times,w,P),P)
     
+    % check which pixels fall close to a cluster
+    cdm = DM>10;
     
+    % create mask for pixels
+    mask = reshape(sum(cdm,2) > 0,r,c);
+    
+    % display image
+    figure(2)
+    clf
+    imshow(rgbim)
+    drawnow
+    
+    % display mask
+    figure(3)
+    clf
+    imshow(mask)
+    drawnow
+    
+    % wait until a key is pressed
+    pause
 end
