@@ -72,7 +72,8 @@ function classifier_gui
     end
 
     function get_roi(source, callbackdata)
-        indices = find(roipoly);
+        mask = roipoly;
+        indices = find(mask)
         coords{im_index} = [coords{im_index}; indices];
         %current_color = color_dict{color_idx};
         colors{im_index} = [colors{im_index}; repmat(color_idx,length(indices),1)];%vertcat(colors{im_index}, repmat({current_color},length(indices),1));
