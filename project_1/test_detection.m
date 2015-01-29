@@ -1,4 +1,4 @@
-
+clear all
 dirstruct = dir('*.png');
 
 for i = 1:length(dirstruct),

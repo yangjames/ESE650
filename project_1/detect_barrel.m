@@ -31,7 +31,6 @@ while isempty(S) && iteration ~= length(models)
     end
 
     [~,idx] = max(DM,[],2);
-    size(idx)
     mask = reshape(idx > models{iteration}.model1.num_clusters,r,c);
     se_o = strel('square',25);
     se_c = strel('square',8);
