@@ -23,7 +23,6 @@ fprintf('Starting EM...\n')
 done = 0;
 iterator = 1;
 L_new = 0;
-current_delta = abs(L-L_new);
 while ~done
     
     % E-step
@@ -42,18 +41,17 @@ while ~done
     
     % calculate log likelihood
     L_new = 1/n*sum(log(P*w'));
-    
-    % check exit condition
-    if abs(L-L_new) < delta
-        % progress print statement
-        fprintf('iteration: %d | delta: %6.6f | target delta: %6.6f\n',iterator, current_delta, delta);
-        done = 1;
-    end
+    current_delta = abs(L-L_new);
     
     % progress print statement
     fprintf('iteration: %d | delta: %6.6f | target delta: %6.6f\n',iterator, current_delta, delta);
     
-    current_delta = abs(L-L_new);
+    % check exit condition
+    if current_delta < delta
+        done = 1;
+    end
+    
+    
     L = L_new;
     iterator = iterator+1;
 end
