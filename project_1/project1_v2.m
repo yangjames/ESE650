@@ -7,24 +7,57 @@ load barrel_nobarrel_data.mat
 
 %% convert barrel pixels to YCbCr and store
 fprintf('Gathering pixel data...\n')
-data = [];
+data1 = [];
+data2 = [];
 for i = 1:length(file_names)
+    % open image and convert to YCbCr
     im = rgb2ycbcr(imread(file_names{i}));
+    
+    % extract Y, Cb, and Cr channels
     Y = im(:,:,1);
     Cb = im(:,:,2);
     Cr = im(:,:,3);
-    Y = Y(coords{1});
-    Cb = Cb(coords{1});
-    Cr = Cr(coords{1});
-
+    
+    % get barrel colors
+    Y1 = Y(coords{i});
+    Cb1 = Cb(coords{i});
+    Cr1 = Cr(coords{i});
+    
+    %{
+    figure(1)
+    clf
+    mask = false(size(im,1),size(im,2));
+    mask(coords{i}) = true;
+    imshow(mask)
+    pause
+    %}
+    
+    % get non-barrel colors
+    indices = (1:size(im,1)*size(im,2))';
+    indices = indices(~ismember(indices,coords{i}));
+    Y2 = Y(indices);
+    Cb2 = Cb(indices);
+    Cr2 = Cr(indices);
+    
+    %{
+    figure(1)
+    clf
+    mask = true(size(im,1),size(im,2));
+    mask(coords{i}) = false;
+    imshow(mask)
+    pause
+    %}
+    
     clear im
-    data = [data; Cb Cr];
-    clear Y Cb Cr
+    data1 = [data1; Y1 Cb1 Cr1];
+    data2 = [data2; Y2 Cb2 Cr2];
+    clear Y Cb Cr Y1 Cb1 Cr1 Y2 Cb2 Cr2
 end
-data = double(data);
+data1 = double(data1);
+data2 = double(data2);
 %}
 %{
-%% intialize toy a
+%% intialize toy dataset
 test_mu1 = [0.9 0.5 5];
 test_sigma1 = 0.1*eye(3)
 test_mu2 = [10 5 7];
@@ -34,8 +67,8 @@ data = [mvnrnd(test_mu1,test_sigma1,1005); mvnrnd(test_mu2,test_sigma2,1005)];
 %{
 figure(2)
 clf
-%plot(data(:,1),data(:,2),'.')
-plot3(data(:,1),data(:,2),data(:,3),'.')
+%plot(data1(:,1),data1(:,2),'.')
+plot3(data1(:,1),data1(:,2),data1(:,3),'.')
 xlabel('Y')
 ylabel('Cb')
 zlabel('Cr')
@@ -45,8 +78,8 @@ drawnow
 %}
 %% create gaussians and initialize GMM
 fprintf('Initializing parameters...\n')
-[n,d] = size(data);
-k = 4;
+[n,d] = size(data1);
+k = 2;
 A = cell(k,1);
 mu = zeros(k,d);
 w = zeros(1,k);
@@ -56,7 +89,7 @@ for i = 1:k
     A{i} = diag(rand(d,1))*255;
     w(i) = 1/k;
     mu(i,:) = rand(1,d)*255;
-    P(:,i) = compute_gaussian_density(data,mu(i,:),A{i});
+    P(:,i) = compute_gaussian_density(data1,mu(i,:),A{i});
 end
 P(P<eps) = eps;
 
@@ -81,10 +114,10 @@ while ~done
     % M-step
     w = dumb_n/n;
     for i = 1:k
-        mu(i,:) = 1/dumb_n(i)*sum(bsxfun(@times,gamma(:,i),data));
-        mean_centered = bsxfun(@minus,data,mu(i,:));
+        mu(i,:) = 1/dumb_n(i)*sum(bsxfun(@times,gamma(:,i),data1));
+        mean_centered = bsxfun(@minus,data1,mu(i,:));
         A{i} = 1/dumb_n(i)*bsxfun(@times,gamma(:,i),mean_centered)'*mean_centered;
-        P(:,i) = compute_gaussian_density(data,mu(i,:),A{i});
+        P(:,i) = compute_gaussian_density(data1,mu(i,:),A{i});
     end
     P(P<eps) = eps;
     
@@ -99,35 +132,40 @@ while ~done
     L = L_new;
     iterator = iterator+1;
 end
-model.weight = w;
-model.mean = mu;
-model.cov = A;
-model.num_clusters = k;
+model1.weight = w;
+model1.mean = mu;
+model1.cov = A;
+model1.num_clusters = k;
 
+%{d
 %% plot stuff
 figure(1)
 clf
-sparsity = 10;
-plot(data(1:sparsity:end,1),data(1:sparsity:end,2),'.')
+sparsity = 100;
+plot(data1(1:sparsity:end,1),data1(1:sparsity:end,2),'.')
 axis equal
 grid on
 hold on
-for i = 1:model.num_clusters
+for i = 1:model1.num_clusters
     
 end
-%{
+%}
+%{d
 %% plot stuff
 figure(1)
 clf
-sparsity = 10;
-plot3(data(1:sparsity:end,1),data(1:sparsity:end,2),data(1:sparsity:end,3),'.')
+sparsity = 100;
+plot3(data1(1:sparsity:end,1),data1(1:sparsity:end,2),data1(1:sparsity:end,3),'.')
 axis equal
 lims = [0 255];
 grid on
 hold on
+xlabel('Y')
+ylabel('Cb')
+zlabel('Cr')
 for i = 1:k
     % get principle components of covariance matrix
-    [V,Lambda] = eig(model.cov{i});
+    [V,Lambda] = eig(model1.cov{i});
     R = 1;
     prin_comps = R*sqrt(diag(Lambda));
     
@@ -138,9 +176,9 @@ for i = 1:k
     rot_el = kron(V(:,1),xe) + kron(V(:,2),ye) + kron(V(:,3),ze);
     
     % get ellipse surface points
-    rot_x = rot_el(1:size(rot_el,2),:)+model.mean(i,1);
-    rot_y = rot_el(size(rot_el,2)+1:2*size(rot_el,2),:)+model.mean(i,2);
-    rot_z = rot_el(2*size(rot_el,2)+1:end,:)+model.mean(i,3);
+    rot_x = rot_el(1:size(rot_el,2),:)+model1.mean(i,1);
+    rot_y = rot_el(size(rot_el,2)+1:2*size(rot_el,2),:)+model1.mean(i,2);
+    rot_z = rot_el(2*size(rot_el,2)+1:end,:)+model1.mean(i,3);
     
     % plot ellipse
     surf(rot_x,rot_y,rot_z);
@@ -153,7 +191,7 @@ drawnow
 for i = 1:length(file_names)
     % get image
     rgbim = imread(file_names{i});
-    G = fspecial('gaussian',[5 5],2);
+    G = fspecial('gaussian',[5 5],4);
     rgbim = imfilter(rgbim,G,'same');
     
     im = rgb2ycbcr(rgbim);
@@ -162,23 +200,24 @@ for i = 1:length(file_names)
     Y = reshape(im(:,:,1),r*c,1);
     Cb = reshape(im(:,:,2),r*c,1);
     Cr = reshape(im(:,:,3),r*c,1);
-    colors = double([ Cb Cr]);
+    colors = double([Y Cb Cr]);
     
     % calculate probability density and Mahalanobis distance of each pixel
-    P = zeros(r*c,model.num_clusters);
-    DM = zeros(r*c,model.num_clusters);
-    for j = 1:model.num_clusters
-        P(:,j) = compute_gaussian_density(colors,model.mean(j,:),model.cov{j});
-        mean_centered = bsxfun(@minus,colors,model.mean(j,:));
+    P = zeros(r*c,model1.num_clusters);
+    DM = zeros(r*c,model1.num_clusters);
+    for j = 1:model1.num_clusters
+        P(:,j) = compute_gaussian_density(colors,model1.mean(j,:),model1.cov{j});
+        mean_centered = bsxfun(@minus,colors,model1.mean(j,:));
         DM(:,j) = sqrt(sum((mean_centered/A{j}).*mean_centered,2));
     end
     
     % check which pixels fall close to a cluster
-    cdm = DM>10;
+    cdm = DM>6;
     
     % create mask for pixels
-    mask = reshape(sum(cdm,2) > 0,r,c);
-    
+    pre_filt_mask = reshape(uint8(~(sum(cdm,2) > 0))*255,r,c);
+    mask = medfilt2(pre_filt_mask);
+        
     % display image
     figure(2)
     clf
