@@ -92,7 +92,7 @@ for i = 1:length(file_names)
     Cr = reshape(im(:,:,3),r*c,1);
     colors = double([Y Cb Cr]);
     
-    % calculate probability density and Mahalanobis distance of each pixel
+    % calculate probability density of each pixel
     P = zeros(r*c,model1.num_clusters+model2.num_clusters);
     DM = zeros(r*c,model1.num_clusters+model2.num_clusters);
     for j = 1:model1.num_clusters
