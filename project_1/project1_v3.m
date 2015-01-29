@@ -26,9 +26,9 @@ for i = 1:length(file_names)
     % get non-barrel colors
     indices = (1:size(im,1)*size(im,2))';
     indices = indices(~ismember(indices,coords{i}));
-    Y2 = Y(indices(1:5:end));
-    Cb2 = Cb(indices(1:5:end));
-    Cr2 = Cr(indices(1:5:end));
+    Y2 = Y(indices(1:3:end));
+    Cb2 = Cb(indices(1:3:end));
+    Cr2 = Cr(indices(1:3:end));
     
     clear im
     data1 = [data1; Y1 Cb1 Cr1];
@@ -39,16 +39,14 @@ data1 = double(data1);
 data2 = double(data2);
 
 %% generate gmm models
-model1 = gmm_train(data1,4,0.002);
+model1 = gmm_train(data1,7,0.002);
 model2 = gmm_train(data2,2,0.002);
 
 %% plot stuff
 figure(1)
 clf
 sparsity = 100;
-plot3(data1(1:sparsity:end,1),data1(1:sparsity:end,2),data1(1:sparsity:end,3),'.')
 axis equal
-lims = [0 255];
 grid on
 hold on
 xlabel('Y')
@@ -75,13 +73,15 @@ for i = 1:model2.num_clusters
     surf(rot_x,rot_y,rot_z);
     alpha(0.1)
 end
+
+plot3(data2(1:sparsity:end,1),data2(1:sparsity:end,2),data2(1:sparsity:end,3),'.')
 drawnow
 
 %% test classifications
 for i = 1:length(file_names)
     % get image
     rgbim = imread(file_names{i});
-    G = fspecial('gaussian',[5 5],4);
+    G = fspecial('gaussian',[10 10],10);
     rgbim = imfilter(rgbim,G,'same');
     
     im = rgb2ycbcr(rgbim);
@@ -109,52 +109,71 @@ for i = 1:length(file_names)
     [~,idx] = max(DM,[],2);
     size(idx)
     mask = reshape(idx > model1.num_clusters,r,c);
-    se_o = strel('disk',10);
-    se_c = strel('disk',5);
+    se_o = strel('square',25);
+    se_c = strel('square',8);
     mask_og = mask;
-    mask = imopen(mask,se_o);
+    %mask = imopen(mask,se_o);
     mask = imclose(mask,se_c);
-    mask = (mask & mask_og) | mask;
+    mask = imopen(mask,se_o);
+    %mask = (mask & mask_og) | mask;
     
     CC = bwconncomp(mask);
     S = regionprops(CC);
     indicator = false(length(S),1);
-    BB = zeros(length(S),4);
+    BB_size = zeros(length(S),2);
+    BB_coords = zeros(length(S),4);
     Area = zeros(length(S),1);
     for j = 1:length(S)
-        BB(j,:) = S(j).BoundingBox;
-        A(j) = S(j).Area;
+        BB_size(j,:) = S(j).BoundingBox(3:4);
+        Area(j) = S(j).Area;
     end
-    
-    [w,w_idx] = min(BB(:,3:4),[],2);
-    [h,h_idx] = max(BB(:,3:4),[],2);
+    a_filt = Area >= 2280;
+    S = S(a_filt);
+    BB_size = BB_size(a_filt,:);
+    Area = Area(a_filt);
+    depth = zeros(length(S),1);
+    %{
+    [w,w_idx] = min(BB_size,[],2);
+    [h,h_idx] = max(BB_size,[],2);
     potential = abs(w./h-40/57) < 0.25 & Area >= 2280;
-    
+    %}
     for j = 1:length(S)
-        w = min(S(j).BoundingBox(3:4));
-        h = max(S(j).BoundingBox(3:4));
-        if abs(w/h-40/57) < 0.25 && S(j).Area >= 2280
-            abs(w/h-40/57)
+        [w,w_idx] = min(S(j).BoundingBox(3:4));
+        [h,h_idx] = max(S(j).BoundingBox(3:4));
+        if abs(w/h-40/57)/(40/57) < 0.25
             indicator(j) = true;
+        end
+        if w_idx == 1
+            depth(j) = 40*11.35/w;
+        else
+            depth(j) = 57*11.35/h;
         end
     end
     S = S(indicator);
-    
+
     % display image
     figure(2)
     clf
     imshow(rgbim)
+    hold on
+    for j = 1:length(S)
+        plot(S(j).Centroid(1),S(j).Centroid(2),'g+')
+        rectangle('Position',S(j).BoundingBox,'EdgeColor','g');
+        text(S(j).Centroid(1)+20,S(j).Centroid(2)-20,[num2str(depth(j),5) 'm'],'BackgroundColor','w');
+    end
+    title(['Image ' num2str(i) ' of ' num2str(length(file_names)) ' ' file_names{i}])
     drawnow
-    
+    %{
     % display mask
     figure(3)
     clf
     imshow(mask)
     hold on
-    for i = 1:length(S)
-        rectangle('Position',S(i).BoundingBox,'EdgeColor','g');
+    for j = 1:length(S)
+        rectangle('Position',S(j).BoundingBox,'EdgeColor','g');
     end
     drawnow
+    %}
     % wait until a key is pressed
     pause
 end
