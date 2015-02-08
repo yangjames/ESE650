@@ -83,16 +83,12 @@ for i = 2:length(imu.ts)
     % propagate first order integration
     A = [eye(3) dt*eye(3);...
         zeros(3) eye(3)];
-    mu = A*[mu_0(1:3);w]+Q;
-    
+    mu = A*[mu_0(1:3);w];
     S = A*S_0*A'+diag(Q);
     
-    % update with accelerometer data if available
+    % update with accelerometer data if magnitude is reasonable
     a = (imu.vals(1:3,i)-a_b)*params.sf_a.*[-1;-1;1];
-    
-  
     if norm(a) < 9.81+a_tol && norm(a) > 9.81-a_tol
-        
         roll = (atan2(a(2), a(3)))*180/pi;
         pitch = (atan2(-a(1), a(3)))*180/pi;
         if roll < -180
@@ -105,15 +101,18 @@ for i = 2:length(imu.ts)
         elseif pitch >= 180
             pitch = pitch - 180;
         end
-        %disp([mu(1:3)*180/pi [roll; pitch;0]])
     end
-    mu_0 = mu
+    
+    % assign mu and sigma for next time step
+    mu_0 = mu;
+    S_0 = S;
+    
+    %% plotting
     % get rotation matrices
     rot1 = euler_to_rot(mu_0(1),mu_0(2),mu_0(3));
     rot2 = euler_to_rot(roll*pi/180,pitch*pi/180,mu(3));
     
     % plot rotations
-    
     r_gyro = rot1*eye(3);
     set(p_gyro.x,'xdata',[0 r_gyro(1,1)],'ydata',[0 r_gyro(2,1)],'zdata',[0 r_gyro(3,1)]);
     set(p_gyro.y,'xdata',[0 r_gyro(1,2)],'ydata',[0 r_gyro(2,2)],'zdata',[0 r_gyro(3,2)]);
