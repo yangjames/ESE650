@@ -4,7 +4,7 @@ addpath('cam')
 addpath('ref')
 addpath('vicon')
 
-dataset = 2;
+dataset = 1;
 imu_file = ['imuRaw' num2str(dataset)];
 cam_file = ['cam' num2str(dataset)];
 vicon_file = ['viconRot' num2str(dataset)];
