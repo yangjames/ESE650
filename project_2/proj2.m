@@ -4,7 +4,7 @@ addpath('cam')
 addpath('ref')
 addpath('vicon')
 
-dataset = 4;
+dataset = 3;
 imu_file = ['imuRaw' num2str(dataset)];
 cam_file = ['cam' num2str(dataset)];
 vicon_file = ['viconRot' num2str(dataset)];
@@ -55,7 +55,7 @@ size(imu.vals(5,:))
 roll_bias = 373.75;
 pitch_bias = 375.6;
 yaw_bias = 370.047;
-sf_w = [0.018 0.018 0.018]';
+sf_w = [0.018 0.018 0.017]';
 figure(3)
 clf
 plot(imu.ts-imu.ts(1),(imu.vals(5,:)-roll_bias)*sf_w(1),'r-')

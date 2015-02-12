@@ -1,4 +1,5 @@
 clear all
+close all
 addpath('imu')
 addpath('cam')
 addpath('ref')
@@ -10,7 +11,7 @@ acc_meas = [];
 vicon_meas = [];
 
 %% declare dataset
-dataset = 6;
+dataset = 1;
 imu_file = ['imuRaw' num2str(dataset)];
 cam_file = ['cam' num2str(dataset)];
 vicon_file = ['viconRot' num2str(dataset)];
@@ -19,7 +20,9 @@ vicon_file = ['viconRot' num2str(dataset)];
 load('imu_params.mat')
 imu = load(imu_file);
 vicon = load(vicon_file);
-
+cam = load(cam_file);
+cam.cam(1:floor(end/2),:,:,1) = 0;
+%imshow(cam.cam(:,:,:,1))
 %% plots
 lims = [-1.1 1.1];
 
@@ -94,6 +97,18 @@ vicon_idx = 1;
 tic
 start = toc;
 prev = zeros(7,1);
+
+num_pix = 500;
+d_angle = pi/num_pix;
+
+canvas = uint8(zeros(num_pix,2*num_pix,3));
+figure(4)
+im = imshow(canvas);
+[row,col] = ind2sub([320,240],1:320*240);
+pixel_coords = [row; col];
+space_coords = pixel_to_world(pixel_coords)';
+space_coord_norm = sqrt(sum(space_coords.^2,2));
+
 for i = 2:length(imu.ts)
     % get dt
     dt = imu.ts(i)-imu.ts(i-1);
@@ -167,7 +182,25 @@ for i = 2:length(imu.ts)
     P_k = P_k_mean-K_k*P_vv*K_k';
     
     
+    %% image stitching
+    [~,im_idx] = min(abs(imu.ts(i)-cam.ts));
     
+    [~,vicon_idx] = min(abs(imu.ts(i)-vicon.ts));
+    q_Vicon = rot_to_quat(vicon.rots(:,:,vicon_idx));
+    rotated_coord = quatrotate((x_k(1:4).*[1 -1 -1 -1]')',space_coords);
+    rotated_coord = quatrotate((q_Vicon.*[1 -1 -1 -1]')',space_coords);
+    coord = [asin(rotated_coord(:,3)./space_coord_norm) atan2(rotated_coord(:,2),rotated_coord(:,1))];
+    shifted_coord = bsxfun(@plus,coord,[pi/2 pi]);
+    idx_coord = ceil(shifted_coord/d_angle);
+    pixels = reshape(flipud(imrotate(cam.cam(:,:,:,im_idx),90)), 320*240*3,1);
+    lin_coords_r = sub2ind(size(canvas(:,:,1)),idx_coord(:,1),idx_coord(:,2));
+    lin_coords_g = lin_coords_r + numel(canvas(:,:,1));
+    lin_coords_b = lin_coords_r + numel(canvas(:,:,1))*2;
+    canvas([lin_coords_r; lin_coords_g; lin_coords_b]) = pixels;
+
+    %canvas(idx_coord(:,1),idx_coord(:,2),:) = reshape(cam.cam(:,:,:,im_idx), 320*240,3);
+    set(im,'cdata',flipud(canvas))
+    %{
     %% plotting
     % plot propagated rotation
     rot1 = quat_to_rot(x_k_mean(1:4));
@@ -178,11 +211,7 @@ for i = 2:length(imu.ts)
     set(p_gyro.z,'xdata',[0 r_gyro(1,3)],'ydata',[0 r_gyro(2,3)],'zdata',[0 r_gyro(3,3)]);
     set(p_g,'Name',num2str(imu.ts(i)-imu.ts(1)));
     drawnow
-    %{
-    lt = vicon.ts-vicon.ts(1) < imu.ts(i)-imu.ts(1);
-    t_stamp = vicon.ts(lt);
-    r_vicon = vicon.rots(:,:,length(t_stamp))*eye(3);
-    %}
+    
     [~,vicon_idx] = min(abs(imu.ts(i)-vicon.ts));
     r_vicon = vicon.rots(:,:,vicon_idx)*eye(3);
     set(p_vicon.x,'xdata',[0 r_vicon(1,1)],'ydata',[0 r_vicon(2,1)],'zdata',[0 r_vicon(3,1)]);
@@ -196,7 +225,7 @@ for i = 2:length(imu.ts)
     
     acc_meas = [acc_meas quatrotate(rot_to_quat(vicon.rots(:,:,vicon_idx))',((imu.vals(1:3,i)-a_b).*params.sf_a.*[-1;-1;1])')'];
     vicon_meas = [vicon_meas quatrotate(rot_to_quat(vicon.rots(:,:,vicon_idx))',[0 0 1])'];
-    
+    %}
     stop = toc;
     %fprintf('time: %6.6f\n', imu.ts(i)-imu.ts(1))
     pause(dt-(stop-start))
