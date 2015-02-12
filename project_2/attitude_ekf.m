@@ -5,7 +5,7 @@ addpath('ref')
 addpath('vicon')
 
 %% declare dataset
-dataset = 1;
+dataset = 5;
 imu_file = ['imuRaw' num2str(dataset)];
 cam_file = ['cam' num2str(dataset)];
 vicon_file = ['viconRot' num2str(dataset)];
@@ -51,7 +51,7 @@ ylim(lims);
 zlim(lims);
 p_gyro.y = plot3([0 r_gyro(1,2)],[0 r_gyro(2,2)],[0 r_gyro(3,2)],'g-*');
 p_gyro.z = plot3([0 r_gyro(1,3)],[0 r_gyro(2,3)],[0 r_gyro(3,3)],'b-*');
-
+%{
 p_a = figure(3);
 clf
 r_acc = eye(3);
@@ -68,18 +68,19 @@ ylim(lims);
 zlim(lims);
 p_acc.y = plot3([0 r_acc(1,2)],[0 r_acc(2,2)],[0 r_acc(3,2)],'g-*');
 p_acc.z = plot3([0 r_acc(1,3)],[0 r_acc(2,3)],[0 r_acc(3,3)],'b-*');
-
+%}
 %% initialize
 Q = [0.01 0.01 0.01 0.01 0.01 0.01 0.01]'; % dynamics noise
-R = 0.3*ones(4,1);%[0.2 0.2 0.2 0.2]'; % accelerometer noise
+R = 0.01*ones(4,1);%[0.2 0.2 0.2 0.2]'; % accelerometer noise
 w_b = [params.roll_bias;params.pitch_bias;params.yaw_bias];
 a_b = [params.ax_bias; params.ay_bias; params.az_bias];
-a_tol = 0.7;
-cutoff_high = 0.001;
+a_tol = 0.01;
+a_tol_tilt = 0.2;
+cutoff_high = 0.01;
 RC_high = 1/(cutoff_high*2*pi);
 
 q_0 = [1 0 0 0]';
-w_0 = (imu.vals([5 6 4],1) - w_b)*params.sf_w;
+w_0 = (imu.vals([5 6 4],1) - w_b).*params.sf_w;
 mu_0 = [q_0; w_0];
 S_0 = eye(length(mu_0));
 vicon_idx = 1;
@@ -92,8 +93,8 @@ for i = 2:length(imu.ts)
     % get dt and high-passed angular velocity vector
     dt = imu.ts(i)-imu.ts(i-1);
     alpha_hp = RC_high/(dt+RC_high);
-    w_1 = (imu.vals([5 6 4],i)-w_b)*params.sf_w;
-    w_0 = (imu.vals([5 6 4],i-1)-w_b)*params.sf_w;
+    w_1 = (imu.vals([5 6 4],i)-w_b).*params.sf_w;
+    w_0 = (imu.vals([5 6 4],i-1)-w_b).*params.sf_w;
     w = w*alpha_hp + alpha_hp*(w_1-w_0);
     %w = w_1;
 
@@ -109,15 +110,17 @@ for i = 2:length(imu.ts)
     mu(1:4) = mu(1:4)/norm(mu(1:4));
     
     % update with accelerometer data if magnitude is reasonable
-    a = (imu.vals(1:3,i)-a_b)*params.sf_a.*[-1;-1;1];
-    if norm(a) < 9.81+a_tol && norm(a) > 9.81-a_tol ...
-            && abs(a(1)) < 9.81-a_tol ...
-            && abs(a(2)) < 9.81-a_tol
+    a = (imu.vals(1:3,i)-a_b).*params.sf_a.*[-1;-1;1];
+    
+    if norm(a) < 1+a_tol && norm(a) > 1-a_tol ...
+            && abs(a(1)) < 1-a_tol_tilt ...
+            && abs(a(2)) < 1-a_tol_tilt && 0
+        
         roll = (atan2(a(2), a(3)));
         pitch = (atan2(-a(1), a(3)));
-        q_v = rot_to_quat(vicon.rots(:,:,vicon_idx));
-        [~,~,yaw] = quat_to_euler(q_v);
-        %yaw = psi;
+        %q_v = rot_to_quat(vicon.rots(:,:,vicon_idx));
+        %[~,~,yaw] = quat_to_euler(q_v);
+        yaw = psi;
         if roll < -pi
             roll = roll + pi;
         elseif roll >= pi
@@ -141,7 +144,7 @@ for i = 2:length(imu.ts)
         
         % update new mu
         mu = mu+K*(O-B*mu);
-        
+        %{
         %% plot the accelerometer angle
         rot2 = quat_to_rot(q_a);
             
@@ -151,6 +154,7 @@ for i = 2:length(imu.ts)
         set(p_acc.z,'xdata',[0 r_acc(1,3)],'ydata',[0 r_acc(2,3)],'zdata',[0 r_acc(3,3)]);
         set(p_a,'Name',num2str(imu.ts(i)-imu.ts(1)));
         drawnow
+        %}
     end
     
     % assign mu and sigma for next time step
