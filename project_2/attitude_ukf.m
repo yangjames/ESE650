@@ -4,6 +4,7 @@ addpath('imu')
 addpath('cam')
 addpath('ref')
 addpath('vicon')
+addpath('P2_TEST')
 
 ukf_state = [];
 vicon_state = [];
@@ -11,18 +12,19 @@ acc_meas = [];
 vicon_meas = [];
 
 %% declare dataset
-dataset = 1;
-imu_file = ['imuRaw' num2str(dataset)];
+dataset = 8;
+imu_file = ['imu_test'];
+cam_file = ['cam_test'];
+imu_file= ['imuRaw' num2str(dataset)];
 cam_file = ['cam' num2str(dataset)];
-vicon_file = ['viconRot' num2str(dataset)];
 
 %% load dataset
 load('imu_params.mat')
 imu = load(imu_file);
-vicon = load(vicon_file);
+%vicon = load(vicon_file);
 cam = load(cam_file);
-cam.cam(1:floor(end/2),:,:,1) = 0;
-%imshow(cam.cam(:,:,:,1))
+
+%{
 %% plots
 lims = [-1.1 1.1];
 
@@ -59,7 +61,7 @@ ylim(lims);
 zlim(lims);
 p_gyro.y = plot3([0 r_gyro(1,2)],[0 r_gyro(2,2)],[0 r_gyro(3,2)],'g-*');
 p_gyro.z = plot3([0 r_gyro(1,3)],[0 r_gyro(2,3)],[0 r_gyro(3,3)],'b-*');
-
+%}
 %% constants
 % bias, scale factor
 omega_b = [params.roll_bias;params.pitch_bias;params.yaw_bias];
@@ -74,22 +76,22 @@ n = length(P_k);
 % process and sensor noise
 Q = diag(...
     [
-    1.0097*10^3;...
-    1.0099*10^3;...
-    1.0099*10^3;...
-    10;...
-    50;...
-    50 ...
+    88;...
+    88;...
+    88;...
+    40;...
+    40;...
+    40 ...
     ]);
 
 R = diag(...
     [
-    1.5688e1*1.5;...
-    4.7045e1*1.5;...
-    1.2642e1*1.5;...
-    8.4178*10^-5;...
-    7.6938*10^-5;...
-    1.1999*10^-4 ...
+    256.88;...
+    270.45;...
+    226.42;...
+    0.84178;...
+    0.76938;...
+    0.81999 ...
     ]);
 
 % plotting stuff
@@ -108,7 +110,7 @@ im = imshow(canvas);
 pixel_coords = [row; col];
 space_coords = pixel_to_world(pixel_coords)';
 space_coord_norm = sqrt(sum(space_coords.^2,2));
-
+prev_idx = 0;
 for i = 2:length(imu.ts)
     % get dt
     dt = imu.ts(i)-imu.ts(i-1);
@@ -184,22 +186,24 @@ for i = 2:length(imu.ts)
     
     %% image stitching
     [~,im_idx] = min(abs(imu.ts(i)-cam.ts));
-    
-    [~,vicon_idx] = min(abs(imu.ts(i)-vicon.ts));
-    q_Vicon = rot_to_quat(vicon.rots(:,:,vicon_idx));
-    rotated_coord = quatrotate((x_k(1:4).*[1 -1 -1 -1]')',space_coords);
-    rotated_coord = quatrotate((q_Vicon.*[1 -1 -1 -1]')',space_coords);
-    coord = [asin(rotated_coord(:,3)./space_coord_norm) atan2(rotated_coord(:,2),rotated_coord(:,1))];
-    shifted_coord = bsxfun(@plus,coord,[pi/2 pi]);
-    idx_coord = ceil(shifted_coord/d_angle);
-    pixels = reshape(flipud(imrotate(cam.cam(:,:,:,im_idx),90)), 320*240*3,1);
-    lin_coords_r = sub2ind(size(canvas(:,:,1)),idx_coord(:,1),idx_coord(:,2));
-    lin_coords_g = lin_coords_r + numel(canvas(:,:,1));
-    lin_coords_b = lin_coords_r + numel(canvas(:,:,1))*2;
-    canvas([lin_coords_r; lin_coords_g; lin_coords_b]) = pixels;
+    if prev_idx ~= im_idx
+    %    [~,vicon_idx] = min(abs(imu.ts(i)-vicon.ts));
+     %   q_Vicon = rot_to_quat(vicon.rots(:,:,vicon_idx));
+        rotated_coord = quatrotate((x_k(1:4).*[1 -1 -1 -1]')',space_coords);
+        %rotated_coord = quatrotate((q_Vicon.*[1 -1 -1 -1]')',space_coords);
+        coord = [asin(rotated_coord(:,3)./space_coord_norm) atan2(rotated_coord(:,2),rotated_coord(:,1))];
+        shifted_coord = bsxfun(@plus,coord,[pi/2 pi]);
+        idx_coord = ceil(shifted_coord/d_angle);
+        pixels = reshape(flipud(imrotate(cam.cam(:,:,:,im_idx),90)), 320*240*3,1);
+        lin_coords_r = sub2ind(size(canvas(:,:,1)),idx_coord(:,1),idx_coord(:,2));
+        lin_coords_g = lin_coords_r + numel(canvas(:,:,1));
+        lin_coords_b = lin_coords_r + numel(canvas(:,:,1))*2;
+        canvas([lin_coords_r; lin_coords_g; lin_coords_b]) = pixels;
+        prev_idx = im_idx;
+    end
 
     %canvas(idx_coord(:,1),idx_coord(:,2),:) = reshape(cam.cam(:,:,:,im_idx), 320*240,3);
-    set(im,'cdata',flipud(canvas))
+    set(im,'cdata',rot90(canvas,2))
     %{
     %% plotting
     % plot propagated rotation

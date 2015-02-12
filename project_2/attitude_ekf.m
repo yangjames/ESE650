@@ -4,17 +4,21 @@ addpath('cam')
 addpath('ref')
 addpath('vicon')
 
+addpath('P2_TEST')
 %% declare dataset
-dataset = 5;
+dataset = 8;
 imu_file = ['imuRaw' num2str(dataset)];
 cam_file = ['cam' num2str(dataset)];
 vicon_file = ['viconRot' num2str(dataset)];
 
+imu_file = ['imu_test'];
+cam_file = ['cam_test'];
 %% load dataset
 load('imu_params.mat')
 imu = load(imu_file);
 vicon = load(vicon_file);
-
+cam = load(cam_file);
+%{
 %% plots
 lims = [-1.1 1.1];
 
@@ -51,6 +55,7 @@ ylim(lims);
 zlim(lims);
 p_gyro.y = plot3([0 r_gyro(1,2)],[0 r_gyro(2,2)],[0 r_gyro(3,2)],'g-*');
 p_gyro.z = plot3([0 r_gyro(1,3)],[0 r_gyro(2,3)],[0 r_gyro(3,3)],'b-*');
+%}
 %{
 p_a = figure(3);
 clf
@@ -89,6 +94,18 @@ start = toc;
 prev = zeros(7,1);
 w = zeros(3,1);
 psi = 0;
+
+num_pix = 500;
+d_angle = pi/num_pix;
+
+canvas = uint8(zeros(num_pix,2*num_pix,3));
+figure(4)
+im = imshow(canvas);
+[row,col] = ind2sub([320,240],1:320*240);
+pixel_coords = [row; col];
+space_coords = pixel_to_world(pixel_coords)';
+space_coord_norm = sqrt(sum(space_coords.^2,2));
+prev_idx = 0;
 for i = 2:length(imu.ts)
     % get dt and high-passed angular velocity vector
     dt = imu.ts(i)-imu.ts(i-1);
@@ -114,7 +131,7 @@ for i = 2:length(imu.ts)
     
     if norm(a) < 1+a_tol && norm(a) > 1-a_tol ...
             && abs(a(1)) < 1-a_tol_tilt ...
-            && abs(a(2)) < 1-a_tol_tilt && 0
+            && abs(a(2)) < 1-a_tol_tilt
         
         roll = (atan2(a(2), a(3)));
         pitch = (atan2(-a(1), a(3)));
@@ -161,6 +178,27 @@ for i = 2:length(imu.ts)
     mu_0 = mu;
     S_0 = S;
     
+    %% image stitching
+    [~,im_idx] = min(abs(imu.ts(i)-cam.ts));
+    if prev_idx ~= im_idx
+        [~,vicon_idx] = min(abs(imu.ts(i)-vicon.ts));
+        q_Vicon = rot_to_quat(vicon.rots(:,:,vicon_idx));
+        rotated_coord = quatrotate((mu_0(1:4).*[1 -1 -1 -1]')',space_coords);
+        %rotated_coord = quatrotate((q_Vicon.*[1 -1 -1 -1]')',space_coords);
+        coord = [asin(rotated_coord(:,3)./space_coord_norm) atan2(rotated_coord(:,2),rotated_coord(:,1))];
+        shifted_coord = bsxfun(@plus,coord,[pi/2 pi]);
+        idx_coord = ceil(shifted_coord/d_angle);
+        pixels = reshape(flipud(imrotate(cam.cam(:,:,:,im_idx),90)), 320*240*3,1);
+        lin_coords_r = sub2ind(size(canvas(:,:,1)),idx_coord(:,1),idx_coord(:,2));
+        lin_coords_g = lin_coords_r + numel(canvas(:,:,1));
+        lin_coords_b = lin_coords_r + numel(canvas(:,:,1))*2;
+        canvas([lin_coords_r; lin_coords_g; lin_coords_b]) = pixels;
+        prev_idx = im_idx;
+    end
+        
+    %canvas(idx_coord(:,1),idx_coord(:,2),:) = reshape(cam.cam(:,:,:,im_idx), 320*240,3);
+    set(im,'cdata',flipud(canvas))
+    %{
     %% plotting
     % plot propagated rotation
     rot1 = quat_to_rot(mu(1:4));
@@ -180,7 +218,7 @@ for i = 2:length(imu.ts)
     set(p_vicon.z,'xdata',[0 r_vicon(1,3)],'ydata',[0 r_vicon(2,3)],'zdata',[0 r_vicon(3,3)]);
     set(p_v,'Name',num2str(vicon.ts(length(t_stamp))-vicon.ts(1)));
     drawnow
-
+%}
     stop = toc;
     %fprintf('time: %6.6f\n', imu.ts(i)-imu.ts(1))
     pause(dt-(stop-start))
