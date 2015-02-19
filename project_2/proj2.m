@@ -4,7 +4,7 @@ addpath('cam')
 addpath('ref')
 addpath('vicon')
 
-dataset = 1;
+dataset = 10;
 imu_file = ['imuRaw' num2str(dataset)];
 cam_file = ['cam' num2str(dataset)];
 vicon_file = ['viconRot' num2str(dataset)];
@@ -52,9 +52,9 @@ var((imu.vals(3,1:200)-az_bias)*sf_a(3))
 % gyro data
 size(imu.ts-imu.ts(1))
 size(imu.vals(5,:))
-roll_bias = 373.75;
-pitch_bias = 375.6;
-yaw_bias = 370.047;
+roll_bias = 373.736;
+pitch_bias = 375.594;
+yaw_bias = 370.036;
 sf_w = [0.018 0.018 0.017]';
 figure(3)
 clf

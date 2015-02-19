@@ -12,56 +12,17 @@ acc_meas = [];
 vicon_meas = [];
 
 %% declare dataset
-dataset = 8;
+dataset = 10;
 imu_file = ['imu_test'];
 cam_file = ['cam_test'];
-imu_file= ['imuRaw' num2str(dataset)];
-cam_file = ['cam' num2str(dataset)];
+%imu_file= ['imuRaw' num2str(dataset)];
+%cam_file = ['cam' num2str(dataset)];
 
 %% load dataset
 load('imu_params.mat')
 imu = load(imu_file);
-%vicon = load(vicon_file);
 cam = load(cam_file);
 
-%{
-%% plots
-lims = [-1.1 1.1];
-
-p_v = figure(1);
-clf
-r_vicon = eye(3);
-p_vicon.x = plot3([0 r_vicon(1,1)],[0 r_vicon(2,1)],[0 r_vicon(3,1)],'r-*');
-hold on
-axis equal
-grid on
-title('Vicon Attitude')
-xlabel('x')
-ylabel('y')
-zlabel('z')
-xlim(lims);
-ylim(lims);
-zlim(lims);
-p_vicon.y = plot3([0 r_vicon(1,2)],[0 r_vicon(2,2)],[0 r_vicon(3,2)],'g-*');
-p_vicon.z = plot3([0 r_vicon(1,3)],[0 r_vicon(2,3)],[0 r_vicon(3,3)],'b-*');
-
-p_g = figure(2);
-clf
-r_gyro = eye(3);
-p_gyro.x = plot3([0 r_gyro(1,1)],[0 r_gyro(2,1)],[0 r_gyro(3,1)],'r-*');
-hold on
-axis equal
-grid on
-title('UKF Attitude')
-xlabel('x')
-ylabel('y')
-zlabel('z')
-xlim(lims);
-ylim(lims);
-zlim(lims);
-p_gyro.y = plot3([0 r_gyro(1,2)],[0 r_gyro(2,2)],[0 r_gyro(3,2)],'g-*');
-p_gyro.z = plot3([0 r_gyro(1,3)],[0 r_gyro(2,3)],[0 r_gyro(3,3)],'b-*');
-%}
 %% constants
 % bias, scale factor
 omega_b = [params.roll_bias;params.pitch_bias;params.yaw_bias];
@@ -76,22 +37,22 @@ n = length(P_k);
 % process and sensor noise
 Q = diag(...
     [
-    88;...
-    88;...
-    88;...
-    40;...
-    40;...
-    40 ...
+    78.98;...
+    78.98;...
+    78.98;...
+    18.9;...
+    18.9;...
+    18.9 ...
     ]);
 
 R = diag(...
     [
-    256.88;...
-    270.45;...
-    226.42;...
-    0.84178;...
-    0.76938;...
-    0.81999 ...
+    0.5;...
+    0.5;...
+    0.5;...
+    0.001;...
+    0.001;...
+    0.001 ...
     ]);
 
 % plotting stuff
@@ -111,7 +72,9 @@ pixel_coords = [row; col];
 space_coords = pixel_to_world(pixel_coords)';
 space_coord_norm = sqrt(sum(space_coords.^2,2));
 prev_idx = 0;
-for i = 2:length(imu.ts)
+Y = zeros(7,13);
+X = Y;
+for i = 2:length(imu.ts)-700
     % get dt
     dt = imu.ts(i)-imu.ts(i-1);
     q_k = x_k(1:4);
@@ -128,8 +91,10 @@ for i = 2:length(imu.ts)
     q_W = [cos(alpha_W/2);...
         bsxfun(@times,e_W,sin(alpha_W/2))];
     
-    X = [quatmultiply(q_k',q_W')';...
-        bsxfun(@plus,omega_k,W(4:6,:))];
+    for j = 1:size(q_W,2)
+        X(:,j) = [quat_mult(q_k,q_W(:,j)); omega_k+W(4:6,j)];
+    end
+    X(1:4,:) = bsxfun(@rdivide,X(1:4,:),sqrt(sum(X(1:4,:).^2)));
     
     % transform sigma points
     alpha_delta = sqrt(sum(X(5:7,:).^2))*dt;
@@ -137,16 +102,19 @@ for i = 2:length(imu.ts)
     e_delta(:,alpha_delta == 0) = repmat([0 0 0]',1,sum(alpha_delta==0));
     q_delta = [cos(alpha_delta/2);...
         bsxfun(@times,e_delta,sin(alpha_delta/2))];
-    q_k1 = quatmultiply(q_k',q_delta')';
+    q_k1 = bsxfun(@quat_mult,q_k,q_delta);
     
-    Y = [quatmultiply(X(1:4,:)',q_delta')';...
-        X(5:7,:)];
+    for j = 1:size(q_delta,2)
+        Y(:,j) = [quat_mult(X(1:4,j),q_delta(:,j)); X(5:7,j)];
+    end
+    
+    Y(1:4,:) = bsxfun(@rdivide,Y(1:4,:),sqrt(sum(Y(1:4,:).^2)));
     
     % calculate sigma point mean and covariance
     [~,~,V] = svd((Y(1:4,:)*Y(1:4,:)')/(2*n));
     x_k_mean = [V(:,1)/norm(V(:,1));mean(Y(end-2:end,:),2)];
     
-    r_prime = quatmultiply(Y(1:4,:)',x_k_mean(1:4)'.*[1 -1 -1 -1])';
+    r_prime = bsxfun(@quat_mult,quat_conj(x_k_mean(1:4)),Y(1:4,:));
     omega_prime = bsxfun(@minus,Y(5:7,:),x_k_mean(5:7));
     Y_mean_centered = [r_prime; omega_prime];
     W_prime = [bsxfun(@times,2*acos(Y_mean_centered(1,:)) ...
@@ -155,7 +123,12 @@ for i = 2:length(imu.ts)
     P_k_mean = W_prime*W_prime'/(2*n);
     
     % compute a-priori estimate
-    Z = [quatrotate(Y(1:4,:)',[0 0 1])';Y(end-2:end,:)];
+    g_rot = bsxfun(@quat_mult,quat_conj(Y(1:4,:)),[0 0 0 1]');
+    for j = 1:size(Y,2)
+        g_rot(:,j) = quat_mult(g_rot(:,j),Y(1:4,j));
+    end
+    
+    Z = [g_rot(2:4,:);Y(end-2:end,:)];
     z_k_mean = mean(Z,2);
     
     Z_mean_centered = bsxfun(@minus,Z,z_k_mean);
@@ -172,25 +145,20 @@ for i = 2:length(imu.ts)
     
     x_q = quat_to_vec(x_k_mean(1:4)');
     
-    %combine = [x_q; x_k_mean(5:7)]+v_kc;
-    
     alpha_v = norm(v_kc(1:3));
     e_v = v_kc(1:3)/norm(v_kc(1:3));
     e_v(:,alpha_v == 0) = repmat([0 0 0]',1,sum(alpha_v==0));
     q_v = [cos(alpha_v/2);...
         e_v*sin(alpha_v/2)];
-    q_combined = quatmultiply(x_k_mean(1:4)',q_v')';
-    x_k = [q_combined; x_k_mean(5:7)+v_kc(4:6)];
+    q_combined = bsxfun(@quat_mult, x_k_mean(1:4),q_v);
+    x_k = [bsxfun(@rdivide,q_combined,sqrt(sum(q_combined.^2))); x_k_mean(5:7)+v_kc(4:6)];
     P_k = P_k_mean-K_k*P_vv*K_k';
     
     
     %% image stitching
     [~,im_idx] = min(abs(imu.ts(i)-cam.ts));
     if prev_idx ~= im_idx
-    %    [~,vicon_idx] = min(abs(imu.ts(i)-vicon.ts));
-     %   q_Vicon = rot_to_quat(vicon.rots(:,:,vicon_idx));
         rotated_coord = quatrotate((x_k(1:4).*[1 -1 -1 -1]')',space_coords);
-        %rotated_coord = quatrotate((q_Vicon.*[1 -1 -1 -1]')',space_coords);
         coord = [asin(rotated_coord(:,3)./space_coord_norm) atan2(rotated_coord(:,2),rotated_coord(:,1))];
         shifted_coord = bsxfun(@plus,coord,[pi/2 pi]);
         idx_coord = ceil(shifted_coord/d_angle);
@@ -202,71 +170,8 @@ for i = 2:length(imu.ts)
         prev_idx = im_idx;
     end
 
-    %canvas(idx_coord(:,1),idx_coord(:,2),:) = reshape(cam.cam(:,:,:,im_idx), 320*240,3);
     set(im,'cdata',rot90(canvas,2))
-    %{
-    %% plotting
-    % plot propagated rotation
-    rot1 = quat_to_rot(x_k_mean(1:4));
-    r_gyro = rot1*eye(3);
-    
-    set(p_gyro.x,'xdata',[0 r_gyro(1,1)],'ydata',[0 r_gyro(2,1)],'zdata',[0 r_gyro(3,1)]);
-    set(p_gyro.y,'xdata',[0 r_gyro(1,2)],'ydata',[0 r_gyro(2,2)],'zdata',[0 r_gyro(3,2)]);
-    set(p_gyro.z,'xdata',[0 r_gyro(1,3)],'ydata',[0 r_gyro(2,3)],'zdata',[0 r_gyro(3,3)]);
-    set(p_g,'Name',num2str(imu.ts(i)-imu.ts(1)));
-    drawnow
-    
-    [~,vicon_idx] = min(abs(imu.ts(i)-vicon.ts));
-    r_vicon = vicon.rots(:,:,vicon_idx)*eye(3);
-    set(p_vicon.x,'xdata',[0 r_vicon(1,1)],'ydata',[0 r_vicon(2,1)],'zdata',[0 r_vicon(3,1)]);
-    set(p_vicon.y,'xdata',[0 r_vicon(1,2)],'ydata',[0 r_vicon(2,2)],'zdata',[0 r_vicon(3,2)]);
-    set(p_vicon.z,'xdata',[0 r_vicon(1,3)],'ydata',[0 r_vicon(2,3)],'zdata',[0 r_vicon(3,3)]);
-    set(p_v,'Name',num2str(vicon.ts(vicon_idx)-vicon.ts(1)));
-    drawnow
-
-    ukf_state = [ukf_state x_k(1:4)];
-    vicon_state = [vicon_state rot_to_quat(vicon.rots(:,:,vicon_idx))];
-    
-    acc_meas = [acc_meas quatrotate(rot_to_quat(vicon.rots(:,:,vicon_idx))',((imu.vals(1:3,i)-a_b).*params.sf_a.*[-1;-1;1])')'];
-    vicon_meas = [vicon_meas quatrotate(rot_to_quat(vicon.rots(:,:,vicon_idx))',[0 0 1])'];
-    %}
     stop = toc;
-    %fprintf('time: %6.6f\n', imu.ts(i)-imu.ts(1))
     pause(dt-(stop-start))
     start = stop;
 end
-
-%{
-%%
-figure(5)
-clf
-plot(vicon_state(1,:),'r-')
-hold on
-plot(ukf_state(1,:),'b-')
-grid on
-legend('vicon','ukf')
-
-figure(6)
-clf
-plot(vicon_state(2,:),'r-')
-hold on
-plot(ukf_state(2,:),'b-')
-grid on
-legend('vicon','ukf')
-
-figure(7)
-clf
-plot(vicon_state(3,:),'r-')
-hold on
-plot(ukf_state(3,:),'b-')
-grid on
-legend('vicon','ukf')
-
-figure(8)
-clf
-plot(vicon_state(4,:),'r-')
-hold on
-plot(ukf_state(4,:),'b-')
-grid on
-legend('vicon','ukf')
-%}
