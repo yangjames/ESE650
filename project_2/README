@@ -1,0 +1,7 @@
+To run the code:
+
+specify the file name for imu_file and cam_file in attitude_ukf.m
+run attitude_ukf.m
+
+Code has been modified since last submission to only plot on the occurrence of an image.
+Noise parameters have also been changed to improve orientation tracking.
