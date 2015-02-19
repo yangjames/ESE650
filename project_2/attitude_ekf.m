@@ -6,13 +6,13 @@ addpath('vicon')
 
 addpath('P2_TEST')
 %% declare dataset
-dataset = 8;
+dataset = 10;
 imu_file = ['imuRaw' num2str(dataset)];
 cam_file = ['cam' num2str(dataset)];
 vicon_file = ['viconRot' num2str(dataset)];
 
-imu_file = ['imu_test'];
-cam_file = ['cam_test'];
+%imu_file = ['imu_test'];
+%cam_file = ['cam_test'];
 %% load dataset
 load('imu_params.mat')
 imu = load(imu_file);
@@ -106,7 +106,7 @@ pixel_coords = [row; col];
 space_coords = pixel_to_world(pixel_coords)';
 space_coord_norm = sqrt(sum(space_coords.^2,2));
 prev_idx = 0;
-for i = 2:length(imu.ts)
+for i = 2:length(imu.ts)-200
     % get dt and high-passed angular velocity vector
     dt = imu.ts(i)-imu.ts(i-1);
     alpha_hp = RC_high/(dt+RC_high);
