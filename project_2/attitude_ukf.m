@@ -120,6 +120,8 @@ for i = 2:length(imu.ts)-700
     W_prime = [bsxfun(@times,2*acos(Y_mean_centered(1,:)) ...
                             ./sin(acos(Y_mean_centered(1,:))),Y_mean_centered(2:4,:));...
             Y_mean_centered(end-2:end,:)];
+    mask = sin(acos(Y_mean_centered(1,:))) == 0;
+    W_prime(1:4,mask) = repmat([1 0 0 0]',1,sum(mask));
     P_k_mean = W_prime*W_prime'/(2*n);
     
     % compute a-priori estimate
