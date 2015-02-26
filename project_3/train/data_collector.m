@@ -161,7 +161,7 @@ for pattern_num = 1:length(pattern)
             full_data.orientation = orientation;
             full_data.acceleration = acc';
             full_data.time = time;
-            save([file_name(1:end-4) '.mat'],'full_data');
+            save(['data/' file_name(1:end-4) '.mat'],'full_data');
         end
     end
 end
