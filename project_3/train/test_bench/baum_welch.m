@@ -1,9 +1,11 @@
-function params = baum_welch(O,M,N,max_iter)
+function params = baum_welch(O,N,max_iter)
 T = length(O);
+M = length(unique(O));
 
 % initialize probabilities and transition matrix
 Pi = zeros(N,1);
 Pi(1) = 1;
+%Pi = ones(N,1)/N;
 A = diag(ones(1,N)*0.5) + circshift(diag(ones(1,N)*0.5),-1);
 B = ones(N,M);
 B = bsxfun(@rdivide, B, sum(B,2));
@@ -12,7 +14,7 @@ A_prev = A;
 B_prev = B;
 Pi_prev = Pi;
 
-logP = zeros(1,max_iter);
+logP = inf(1,max_iter);
 for iter = 1:max_iter
     
     % calculate alpha
@@ -20,7 +22,7 @@ for iter = 1:max_iter
     Z_alpha = zeros(1,T);
     temp = B(:,1).*Pi;
     Z_alpha(1) = log(sum(temp));
-    alpha_hat(:,1) = temp/exp(Z_alpha(1));
+    alpha_hat(:,1) = temp/max(exp(Z_alpha(1)),eps);
     for t = 2:T
         temp = (A'*alpha_hat(:,t-1)).*B(:,O(t));
         alpha_hat(:,t) = temp/max(sum(temp),eps);
@@ -32,7 +34,7 @@ for iter = 1:max_iter
     Z_beta = zeros(1,T);
     temp = ones(N,1);
     Z_beta(end) = log(sum(temp));
-    beta_hat(:,end) = temp/exp(Z_beta(end));
+    beta_hat(:,end) = temp/max(exp(Z_beta(end)),eps);
     for t = fliplr(1:T-1)
         temp = A*(B(:,O(t+1)).*beta_hat(:,t+1));
         beta_hat(:,t) = temp/max(sum(temp),eps);
@@ -60,11 +62,12 @@ for iter = 1:max_iter
     for i = 1:length(obs)
         B(:,obs(i)) = sum(gamma(:,O==obs(i)),2)./max(sum(gamma,2),eps);
     end
+    B(B<eps) = eps;
+    B = bsxfun(@rdivide,B,sum(B,2));
     
     % Viterbi algorithm initialization
     phi = zeros(N,T);
     phi(:,1) = log(Pi)+log(B(:,O(1)));
-    %labels = zeros(1,T);
     
     % calculate probabilities
     for t = 2:T
@@ -74,7 +77,7 @@ for iter = 1:max_iter
     logP(iter) = max(phi(:,end));
     
     if iter > 1
-        if logP(iter-1) > logP(iter)
+        if abs(logP(iter)-logP(iter-1)) < 0.005
             A = A_prev;
             B = B_prev;
             Pi = Pi_prev;
@@ -88,7 +91,9 @@ for iter = 1:max_iter
     end
     
     % find the winner
-    fprintf('logprog: %6.6f\n', logP(iter))
+    if iter > 1
+        fprintf('delta logprob: %6.6f | logprob: %6.6f\n', logP(iter)-logP(iter-1), logP(iter))
+    end
 end
 params.A = A;
 params.B = B;

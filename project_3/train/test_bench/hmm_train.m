@@ -29,14 +29,12 @@ for pattern_num = 1:length(pattern)
     end
     %}
     
-    M = 30;
-    [O,C] = kmeans(orient',M);
-    N = 10;
+    M = 47;
+    [O,C] = kmeans(orient',M,'maxiter',1000);
+    N = 8;
     max_iter = 500;
-    params = baum_welch(O,M,N,max_iter);
+    params = baum_welch(O,N,max_iter);
     params.C = C;
-    params.A
-    params.B
     fprintf('-----------------------------\n')
     save(['models/' pattern{pattern_num} '_params.mat'],'params')
 end

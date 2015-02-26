@@ -2,8 +2,47 @@ clear all
 close all
 clc
 
-%% load models
-contents = dir('decent_model_4');
+%% train
+pattern = {'beat3','beat4','circle','eight','inf','wave'};
+contents = dir('data');
+file_names = cell(length(contents),1);
+for file_idx = 1:length(contents)
+    file_names{file_idx} = contents(file_idx).name;...
+end
+
+num_left_out = 1;
+test_set = zeros(length(pattern),num_left_out);
+train_set = zeros(length(pattern),5-num_left_out);
+for pattern_num = 1:length(pattern)
+    acc = [];
+    orient = [];
+    time = [];
+    valid_files = find(~cellfun(@isempty,regexp(file_names,['^' pattern{pattern_num} '.+(\.mat)$'])));
+    test_set(pattern_num,:) = floor(rand(1,num_left_out)*5)+1;
+    temp = 1:5;
+    train_set(pattern_num,:) = temp(~ismember(temp,test_set(pattern_num,:)));
+    
+    for i = 1:length(train_set(pattern_num,:))
+        data = load(['data/' file_names{valid_files(train_set(pattern_num,i))}]);
+        acc = [acc data.full_data.acceleration];
+        orient = [orient data.full_data.orientation];
+        time = [time data.full_data.time'];
+    end
+    
+    M = 47;
+    [O,C] = kmeans(orient',M,'maxiter',1000);
+    N = 8;
+    max_iter = 500;
+    params = baum_welch(O,N,max_iter);
+    params.C = C;
+    fprintf('-----------------------------\n')
+    save(['models/' pattern{pattern_num} '_params.mat'],'params')
+end
+
+
+%% test
+% load models
+contents = dir('models');
 model_file_names = cell(length(contents),1);
 for file_idx = 1:length(contents)
     model_file_names{file_idx} = contents(file_idx).name;
@@ -11,11 +50,16 @@ end
 valid_files = find(~cellfun(@isempty,regexp(model_file_names,'.+\.mat')));
 models = cell(length(valid_files),1);
 for i = 1:length(valid_files)
-    models{i} = load(['decent_model_4/' model_file_names{valid_files(i)}]);
+    models{i} = load(['models/' model_file_names{valid_files(i)}]);
 end
 
-%% begin test
+% begin test
 pattern = {'beat3','beat4','circle','eight','inf','wave'};
+margins = cell(length(models),1);
+for i = 1:length(models)
+    margins{i} = zeros(size(models{i}.params.B,1),num_left_out*6);
+end
+idx = 1;
 for pattern_num = 1:length(pattern)
     addpath(pattern{pattern_num})
 
@@ -26,8 +70,8 @@ for pattern_num = 1:length(pattern)
     end
     valid_files = find(~cellfun(@isempty,regexp(file_names,'.+\.txt')));
     
-    for file_idx = 1:length(valid_files)
-        file_name = file_names{valid_files(file_idx)};
+    for file_idx = 1:length(test_set(pattern_num,:))
+        file_name = file_names{valid_files(test_set(pattern_num,file_idx))};
         fid = fopen(['../' pattern{pattern_num} '/' file_name]);
         data = textscan(fid,'%d %f %f %f %f %f %f',...
             'TreatAsEmpty',{'NA','na'},'CommentStyle','#');
@@ -36,26 +80,6 @@ for pattern_num = 1:length(pattern)
         time = double(cell2mat(data(:,1)))/1000;
         acc = cell2mat(data(:,2:4));
         gyro = cell2mat(data(:,5:7));
-        %{
-        %% run UKF
-        % initial state mean, covariance, process noise, and sensor noise
-        x_k = [[1 0 0 0]'; zeros(3,1)];
-        P_k = eye(6);
-        Q = diag([78.98;78.98;78.98;18.9;18.9;18.9]);
-        R = diag([0.5;0.5;0.5;0.001;0.001;0.001]);
-        
-        O = zeros(4,length(time));
-        O(:,1) = [1 0 0 0]';
-        for i = 2:length(time)
-            % get dt
-            dt = time(i)-time(i-1);
-            v_k = [(acc(i,:)/9.81)'; gyro(i,:)'];
-            [x_k, P_k] = ukf(x_k,P_k,Q,R,v_k,dt);
-            
-            % get orientation
-            O(:,i) = x_k(1:4);
-        end 
-        %}
         O = [acc';gyro'];
         
         %% Viterbi algorithm initialization
@@ -83,7 +107,6 @@ for pattern_num = 1:length(pattern)
             hold on
             plot(time,labels(m,:),'b-')
             grid on
-            title(pattern{m})
             drawnow
         end
         
@@ -94,6 +117,8 @@ for pattern_num = 1:length(pattern)
                 phi{m}(:,t) = max(bsxfun(@plus,phi{m}(:,t-1),log(models{m}.params.A)))'...
                     + log(models{m}.params.B(:,labels(m,t)));
             end
+            margins{m}(:,idx) = phi{m}(:,end);
+            idx = idx+1;
             logP(m) = max(phi{m}(:,end));
         end
         

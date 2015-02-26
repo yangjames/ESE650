@@ -52,7 +52,7 @@ for pattern_num = 1:length(pattern)
         
         tic
         start = toc;
-        O = [acc'];
+        O = [acc'; gyro'];
         
         %{
         O = zeros(4,length(time));
