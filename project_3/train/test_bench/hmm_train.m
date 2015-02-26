@@ -21,15 +21,7 @@ for pattern_num = 1:length(pattern)
         time = [time data.full_data.time'];
     end
     
-    %{
-    acc_g = zeros(size(acc));
-    for i = 1:length(time)
-        acc_i = quat_mult(quat_mult(orient(:,i),[0; acc(:,i)]),quat_conj(orient(:,i)));
-        acc_g(:,i) = acc_i(2:4);
-    end
-    %}
-    
-    M = 47;
+    M = 52;
     [O,C] = kmeans(orient',M,'maxiter',1000);
     N = 8;
     max_iter = 500;

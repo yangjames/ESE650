@@ -1,9 +1,12 @@
 clear all
 close all
-clc
+%clc
 
 %% load models
-contents = dir('decent_model_4');
+model_dir = 'models';
+best = 'decent_model_4';
+model_dir = best;
+contents = dir(model_dir);
 model_file_names = cell(length(contents),1);
 for file_idx = 1:length(contents)
     model_file_names{file_idx} = contents(file_idx).name;
@@ -11,15 +14,16 @@ end
 valid_files = find(~cellfun(@isempty,regexp(model_file_names,'.+\.mat')));
 models = cell(length(valid_files),1);
 for i = 1:length(valid_files)
-    models{i} = load(['decent_model_4/' model_file_names{valid_files(i)}]);
+    models{i} = load([model_dir '/' model_file_names{valid_files(i)}]);
 end
 
 %% begin test
 pattern = {'beat3','beat4','circle','eight','inf','wave'};
-for pattern_num = 1:length(pattern)
-    addpath(pattern{pattern_num})
+%for pattern_num = 1:length(pattern)
+    %addpath(pattern{pattern_num})
 
-    contents = dir(['../' pattern{pattern_num}]);
+    %contents = dir(['../' pattern{pattern_num}]);
+    contents = dir('project3_test_data/single');
     file_names = cell(length(contents),1);
     for file_idx = 1:length(contents)
         file_names{file_idx} = contents(file_idx).name;
@@ -28,7 +32,8 @@ for pattern_num = 1:length(pattern)
     
     for file_idx = 1:length(valid_files)
         file_name = file_names{valid_files(file_idx)};
-        fid = fopen(['../' pattern{pattern_num} '/' file_name]);
+        %fid = fopen(['../' pattern{pattern_num} '/' file_name]);
+        fid = fopen(['project3_test_data/single/' file_name]);
         data = textscan(fid,'%d %f %f %f %f %f %f',...
             'TreatAsEmpty',{'NA','na'},'CommentStyle','#');
         fclose(fid);
@@ -76,6 +81,7 @@ for pattern_num = 1:length(pattern)
             end
         end
         
+        %{
         figure(pattern_num)
         clf
         for m = 1:length(models)
@@ -86,6 +92,7 @@ for pattern_num = 1:length(pattern)
             title(pattern{m})
             drawnow
         end
+        %}
         
         % calculate probabilities
         logP = zeros(length(models),1);
@@ -96,9 +103,10 @@ for pattern_num = 1:length(pattern)
             end
             logP(m) = max(phi{m}(:,end));
         end
+        [v,p] = sort(logP);
         
         % find the winner
         [logprob,pat] = max(logP);
-        fprintf(['file: ' file_name ' | pattern: ' pattern{pat} ' | logprog: %6.6f\n'], logprob)
+        fprintf(['file: ' file_name ' | pattern: ' pattern{p(end)} ', ' pattern{p(end-1)} ', ' pattern{p(end-2)} ' | confidence: %6.6f\n'], -(v(end)-v(end-1))/(v(end)+v(end-1))*100)%' | logprog: %6.6f, %6.6f, %6.6f\n'], v(end),v(end-1),v(end-2))
     end
-end
+%end
