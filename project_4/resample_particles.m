@@ -1,4 +1,4 @@
-function index = resample(w, n)
+function index = resample_particles(w, n)
 % Resample n samples with replacement from weights w,
 % and return corresponding indices
 
