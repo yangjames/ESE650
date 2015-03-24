@@ -17,14 +17,14 @@ iHead = get_joint_index('Head'); % head pitch
 x_len = 30;
 y_len = 30;
 z_len = 5;
-resolution = 0.05;
+resolution = 0.02;
 offset_x = x_len/2;
 offset_y = y_len/2;
 offset_z = 0;
 dec_place = floor(log10(resolution));
 val = floor(abs(resolution) ./ 10.^dec_place);
-map_2 = ones(floor(x_len/resolution),floor(y_len/resolution));
-path = ones(length(lidar.lidar),3)*0.5;
+map_2 = zeros(floor(x_len/resolution),floor(y_len/resolution));
+path = zeros(length(lidar.lidar),3);
 
 %% plot
 figure(4)
@@ -49,10 +49,10 @@ lidar_angles = linspace(-135,135,1081)'*pi/180;
 
 %% main loop
 nbytes = 0;
-num_angles = 8;
+num_angles = 9;
 patch_width = 3;
 num_particles = num_angles*patch_width^2;
-log_odd_threshold = 7;
+log_odd_threshold = 1000;
 H_bod = repmat(eye(4),1,1,num_particles);
 lidar_points = zeros(1081,num_particles*4);
 weights = ones(1,num_particles)/num_particles;
@@ -84,7 +84,7 @@ for i = i_0:length(joints.ts)
             bod_pose_prev = lidar.lidar{lidar_idx-1}.pose;
             bod_pose_prev(3) = body_yaw_prev;
             dtheta = body_yaw-body_yaw_prev;
-            dX = [cos(body_yaw_prev) sin(body_yaw_prev); -sin(body_yaw_prev) cos(body_yaw_prev)]*(bod_pose(1:2)'-bod_pose_prev(1:2)');
+            dX = [cos(body_yaw_prev) sin(body_yaw_prev); -sin(body_yaw_prev) cos(body_yaw_prev)]*(bod_pose(1:2)-bod_pose_prev(1:2))';
         end
         
         %% motion model update on particles
@@ -95,7 +95,7 @@ for i = i_0:length(joints.ts)
         end
         
         for j = 1:num_particles
-            particles(1:2,j) = particles(1:2,j) + [cos(particles(3,j)) -sin(particles(3,j)); sin(particles(3,j)) cos(particles(3,j))]*dX + [normrnd(0,abs(dX(1)));normrnd(0,abs(dX(2)))];
+            particles(1:2,j) = particles(1:2,j) + [cos(particles(3,j)) -sin(particles(3,j)); sin(particles(3,j)) cos(particles(3,j))]*dX;
         end
         
         %% get homogeneous transforms of each particle
@@ -116,19 +116,19 @@ for i = i_0:length(joints.ts)
         
         % get rid of bad lidar hits
         lidar_mask = lidar_scan>0.025;
-        lidar_window = 1:1081;
-        lidar_points_masked = lidar_points(lidar_mask(lidar_window),:);
+        %lidar_window = 1:1081;
+        lidar_points_masked = lidar_points(lidar_mask,:);
         
         %% get correlations
         lidar_scaled = bsxfun(@plus,round(lidar_points_masked/resolution), repmat(round([offset_x offset_y offset_z 0]/resolution),1,num_particles));
         for j = 1:num_particles
             lidar_test = lidar_scaled(:,4*j-3:4*j-1);
-            mask = sum(bsxfun(@gt, lidar_test(:,1:2), [x_len y_len]/resolution),2) | sum(bsxfun(@lt,lidar_test(:,1:2),[1 1]),2) | lidar_test(:,3) < 0.1/resolution;
+            mask = sum(bsxfun(@gt, lidar_test(:,1:2), [x_len y_len]/resolution),2) | sum(bsxfun(@lt,lidar_test(:,1:2),[1 1]),2) | lidar_test(:,3) < 0.1/resolution | lidar_test(:,3) > 1.5/resolution;
             lidar_test(mask > 0,:) = [];
             lidar_linidx = sub2ind(size(map_2),lidar_test(:,1),lidar_test(:,2));
-            weights(j) = sum(1./(1+exp(-map_2(lidar_linidx))));
+            weights(j) = sum(1./(1+exp(-map_2(lidar_linidx)))*127);
         end
-        weights = weights/sum(weights);
+        %weights = weights/sum(weights);
         
         %% update map based on most likely particle
         % get lidar hits of best particle
