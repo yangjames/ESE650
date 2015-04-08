@@ -24,7 +24,10 @@ function generate_train_paths
     data_idx = 1;
     paths = {};
     function get_path(source, callbackdata)
-        path = ginput();
+        %{d
+        [~,x,y] = roipoly;
+        path = [x(1:end-1) y(1:end-1)];
+        %path = ginput();
         x_start = round(path(1:end-1,1));
         y_start = round(path(1:end-1,2));
         x_end = path(2:end,1);
@@ -43,6 +46,7 @@ function generate_train_paths
             y_b = [y_b; y_b_i(1:end)];
         end
         %}
+        
         %[x_b,y_b] = getMapCellsFromRay(int32(x_start'),int32(y_start'),x_end',y_end');
         set(path_plot,'xdata',x_b,'ydata',y_b)
         paths{data_idx} = [x_b y_b];
