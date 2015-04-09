@@ -2,7 +2,7 @@ function test_model
     %% establish figure
     clear all
     close all
-    data = load('test_model_2.mat');
+    data = load('test_car_model_3.mat');
     map_rgb = imresize(imread('aerial_color.jpg'),data.scale);
     
     f = figure('Name','Gui Classifier','Visible','off','Position',[0, 0, 1800, 1000]);
