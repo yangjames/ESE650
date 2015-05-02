@@ -19,6 +19,6 @@ for i = 1:max_iter
         n_best = num_in;
         y1 = x1(mask,:);
         y2 = x2(mask,:);
-        idx = find(mask);
+        idx = mask;%find(mask);
     end
 end
