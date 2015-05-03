@@ -1,6 +1,6 @@
-function X = LinearTriangulation(K,C1,R1,C2,R2,x1,x2)
-P1 = K*R1*[eye(3) -C1];
-P2 = K*R2*[eye(3) -C2];
+function X = LinearTriangulation_binocular(K1,K2,C1,R1,C2,R2,x1,x2)
+P1 = K1*R1*[eye(3) -C1];
+P2 = K2*R2*[eye(3) -C2];
 N = size(x1,1);
 
 X = zeros(N,3);

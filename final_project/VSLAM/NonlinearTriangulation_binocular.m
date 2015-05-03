@@ -1,4 +1,4 @@
-function X = NonlinearTriangulation(K, C1, R1, C2, R2, x1, x2, X0)
+function X = NonlinearTriangulation_binocular(K1, K2, C1, R1, C2, R2, x1, x2, X0)
 
 opts = optimoptions(@lsqnonlin, 'Algorithm', 'levenberg-marquardt',...
                                 'TolX', 1e-64,...
@@ -7,8 +7,8 @@ opts = optimoptions(@lsqnonlin, 'Algorithm', 'levenberg-marquardt',...
                                 'MaxIter', 1e64,...
                                 'Display','none');
 
-P1 = K*R1*[eye(3) -C1];
-P2 = K*R2*[eye(3) -C2];
+P1 = K1*R1*[eye(3) -C1];
+P2 = K2*R2*[eye(3) -C2];
 [N,M] = size(X0);
 X = zeros([N,M]);
 nbytes = 0;

@@ -14,17 +14,10 @@ img3Path = [sequence 'image_3/'];
 images3 = dir([img3Path imgType]);
 
 % camera 2 and 3 calibration matrices
-K2 = [7.188560000000e+02 0.000000000000e+00 6.071928000000e+02;...
-    0.000000000000e+00 7.188560000000e+02 1.852157000000e+02;...
-    0.000000000000e+00 0.000000000000e+00 1.000000000000e+00];
-K3 = [ 7.188560000000e+02 0.000000000000e+00 6.071928000000e+02;...
+K = [7.188560000000e+02 0.000000000000e+00 6.071928000000e+02;...
     0.000000000000e+00 7.188560000000e+02 1.852157000000e+02;...
     0.000000000000e+00 0.000000000000e+00 1.000000000000e+00];
 
-% homogeneous transforms between camera 2 and camera3
-% camera 2 is left, camera 3 right
-H2 = [eye(3) [-0.06 -1.65 0]'];
-H3 = [eye(3) [0.48 -1.65 0]'];
 
 %% initialize feature matcher
 param.nms_n                  = 2;   % non-max-suppression: min. distance between maxima (in pixels)
@@ -46,53 +39,232 @@ num_images = min(length(images2),length(images3));
 %% run VSLAM
 debug_flag = true;
 
-for i = 1:1%num_images
-    %% get next image sequence
-    im_L = imread([img2Path images2(i).name]);
-    im_R = imread([img3Path images3(i).name]);
+% get initial features
+im_L_p = imread([img2Path images2(1).name]);
+im_R_p = imread([img3Path images3(1).name]);
+matcherMex('push',rgb2gray(im_L_p),rgb2gray(im_R_p));
 
-    %% push stereo images into feature detector
-    matcherMex('push',rgb2gray(im_L),rgb2gray(im_R));
+im_L   = imread([img2Path images2(2).name]);
+im_R   = imread([img3Path images3(2).name]);
+matcherMex('push',rgb2gray(im_L),rgb2gray(im_R));
 
-    %% match features
-    matcherMex('match',1);
-    matched_features = matcherMex('get_matches',1);
-    matched_indices = matcherMex('get_indices',1);
+% match features
+matcherMex('match',2);
+matched_features = matcherMex('get_matches',2);
+
+% extract matched features
+Mx = matched_features([1 3 5 7],:)';
+My = matched_features([2 4 6 8],:)';
+n_features = size(matched_features,2);
+
+% remove outliers between all images using RANSAC
+[x_l_p, x_r_p, idx_p] = GetInliersRANSAC([Mx(:,1) My(:,1)],[Mx(:,2) My(:,2)],0.005,10000);
+ReconX(idx_p) = 1;
+
+% perform linear triangulation of points
+R_p_L = eye(3);
+R_p_R = eye(3);
+C_p_L = zeros(3,1);
+C_p_R = -[0.54 0 0]';
+X_p = LinearTriangulation(K, C_p_L, R_p_L, C_p_R, R_p_R, x_l_p, x_r_p);
+
+% perfrom nonlinear triangulation of points
+X_p = NonlinearTriangulation( K, C_p_L, R_p_L, C_p_R, R_p_R, x_l_p, x_r_p, X_p);
+
+if debug_flag && ~isempty(idx_p) && false
+    %% plot features
+    %{d
+    figure(1)
+    clf
+    imshow(im_L_p);
+    hold on
+    p_l = (K*R_p_L*[eye(3) -C_p_L]*[X_p ones(sum(idx_p),1)]')';
+    plot(x_l_p(:,1),x_l_p(:,2),'r.')
+    plot(p_l(:,1)./p_l(:,3),p_l(:,2)./p_l(:,3),'b.')
+
+    figure(2)
+    clf
+    imshow(im_R_p);
+    hold on
+    p_r = (K*R_p_R*[eye(3) -C_p_R]*[X_p ones(sum(idx_p),1)]')';
+    plot(x_r_p(:,1),x_r_p(:,2),'r.')
+    plot(p_r(:,1)./p_r(:,3),p_r(:,2)./p_r(:,3),'b.')
+    %}
+    figure(3)
+    clf
+    mask = sqrt(sum(X_p.^2,2))<30;
+    R_w = [0 -1 0; 0 0 1; -1 0 0];
+    showPointCloud(bsxfun(@plus,X_p(mask,:)*R_w,[0 0.06 1.65]))
+    xlabel('x')
+    ylabel('y')
+    zlabel('z')
+end
+R_w = [0 -1 0; 0 0 1; -1 0 0];
+pos = [0 0.06 1.65]';
+X = bsxfun(@plus,X_p*R_w,[0 0.06 1.65]);
+
+figure(2)
+clf
+path_plot = plot3(0,0,0,'k-');
+axis equal
+grid on
+xlabel('x')
+ylabel('y')
+zlabel('z')
+
+figure(10)
+clf
+im_plot = imshow(im_L);
+for i = 3:num_images
+    %% get pose of left and right cameras at next time frame
+    x_L = [Mx(idx_p,3) My(idx_p,3)];%feature_L(idx_p,:);
+    C_pnp_L=[];
+    R_pnp_L=[];
+    n_bytes = 0;
+    while isempty(C_pnp_L) || isempty(R_pnp_L)
+        fprintf(repmat('\b',1,n_bytes))
+        n_bytes = fprintf('no pose estimate yet...');
+        [C_pnp_L, R_pnp_L] = PnPRANSAC(X_p, x_L, K,0.01,10000);
+    end
+    disp('Nonlinear PnP');
+    [C_L, R_L] = NonlinearPnP(X_p, x_L, K, C_pnp_L, R_pnp_L);
     
-    %% extract matched features
-    feature_L = matched_features(1:2,:)';
-    feature_R = matched_features(3:4,:)';
-    
-    %% remove outliers using RANSAC
-    [x_l, x_r, idx] = GetInliersRANSAC(feature_L,feature_R,0.01,1000);
-    
-    %% perform linear triangulation of points
-    X = LinearTriangulation(K2,K3,H2(:,4),H2(:,1:3),H3(:,4),H3(:,1:3),x_l,x_r);
-    if debug_flag && ~isempty(idx)
+    x_R = [Mx(idx_p,4) My(idx_p,4)];%feature_L(idx_p,:);
+    C_pnp_R=[];
+    R_pnp_R=[];
+    n_bytes = 0;
+    while isempty(C_pnp_R) || isempty(R_pnp_R)
+        fprintf(repmat('\b',1,n_bytes))
+        n_bytes = fprintf('no pose estimate yet...');
+        [C_pnp_R, R_pnp_R] = PnPRANSAC(X_p, x_R, K,0.01,10000);
+    end
+    disp('Nonlinear PnP');
+    [C_R, R_R] = NonlinearPnP(X_p, x_R, K, C_pnp_R, R_pnp_R);
+    %{
+    H_L = [R_L -R_L'*C_L; 0 0 0 1];
+    H_R = H_L*[eye(3) [0.54 0 0]';0 0 0 1];
+    R_R = H_R(1:3,1:3);
+    C_R = -R_R'*H_R(1:3,4);
+    %}
+    pos = [pos R_w'*R_L*C_L+[0 0.06 1.65]']
+    set(path_plot,'xdata',pos(1,:),'ydata',pos(2,:),'zdata',pos(3,:));
+    %% triangulate points between new frames
+    % remove outliers between all images using RANSAC
+    [x_l, x_r, idx] = GetInliersRANSAC([Mx(:,3) My(:,3)],[Mx(:,4) My(:,4)],0.005,10000);
+
+    % perform linear triangulation of points
+    X_LR = LinearTriangulation(K, C_L, R_L, C_R, R_R, x_l, x_r);
+
+    % perfrom nonlinear triangulation of points
+    X_LR = NonlinearTriangulation(K, C_L, R_L, C_R, R_R, x_l, x_r, X_LR);
+    X = [X; bsxfun(@plus,X_LR*R_w,[0 0.06 1.65])];
+    figure(1)
+    clf
+    mask = sqrt(sum(bsxfun(@minus,X,pos(:,end)').^2,2)) < 100;
+    showPointCloud(X(mask,:));
+    drawnow
+    if debug_flag && ~isempty(idx) && false
         %% plot features
         %{d
+        figure(4)
+        clf
+        imshow(im_L);
+        hold on
+        p_l = (K*R_L*[eye(3) -C_L]*[X_LR ones(sum(idx),1)]')';
+        plot(x_l(:,1),x_l(:,2),'r.')
+        plot(p_l(:,1)./p_l(:,3),p_l(:,2)./p_l(:,3),'b.')
+
+        figure(5)
+        clf
+        imshow(im_R);
+        hold on
+        p_r = (K*R_R*[eye(3) -C_R]*[X_LR ones(sum(idx),1)]')';
+        plot(x_r(:,1),x_r(:,2),'r.')
+        plot(p_r(:,1)./p_r(:,3),p_r(:,2)./p_r(:,3),'b.')
+        %}
+        figure(6)
+        clf
+        mask = sqrt(sum(X_LR.^2,2))<30;
+        R_w = [0 -1 0; 0 0 1; -1 0 0];
+        showPointCloud(bsxfun(@plus,X_LR(mask,:)*R_w,[0 0.06 1.65]))
+        %showPointCloud(X_LR(mask,:)*R_w)
+        xlabel('x')
+        ylabel('y')
+        zlabel('z')
+    end
+    %}
+    %{d
+    %% bundle adjustment
+    X3D = zeros(n_features,3);
+    X3D(idx_p,:) = X_p;
+    X3D(idx,:) = X_LR;
+    ReconX = idx | idx_p;
+    Mx_bundle = matched_features([1 3 5 7],:)';
+    My_bundle = matched_features([2 4 6 8],:)';
+    Cr_set = {C_p_L, C_p_R, C_L, C_R};
+    Rr_set = {R_p_L, R_p_R, R_L, R_R};
+    disp('Bundle adjustment');
+    %[Cr_set, Rr_set, X3D] = BundleAdjustment(K, Cr_set, Rr_set, X3D, ReconX, Mx_bundle, My_bundle);
+    %}
+    %{d
+    if debug_flag && ~isempty(idx) && false
+        %% plot features
+        
         figure(1)
         clf
         imshow(im_L);
         hold on
-        plot(x_l(:,1),x_l(:,2),'r*')
+        p_l = (K*Rr_set{3}*[eye(3) -Cr_set{3}]*[X3D(ReconX,:) ones(sum(ReconX),1)]')';
+        plot(x_l(:,1),x_l(:,2),'r.')
+        plot(p_l(:,1)./p_l(:,3),p_l(:,2)./p_l(:,3),'b.')
 
         figure(2)
         clf
         imshow(im_R);
         hold on
-        plot(x_r(:,1),x_r(:,2),'b*')
-        %}
+        p_r = (K*Rr_set{4}*[eye(3) -Cr_set{4}]*[X3D(ReconX,:) ones(sum(ReconX),1)]')';
+        plot(x_r(:,1),x_r(:,2),'r.')
+        plot(p_r(:,1)./p_r(:,3),p_r(:,2)./p_r(:,3),'b.')
+        
         figure(3)
         clf
-        mask = sqrt(sum(X.^2,2))<30;
-        R_w = [0 0 1; -1 0 0; 0 -1 0];
-        showPointCloud(X(mask,:))
+        mask = sqrt(sum(X3D.^2,2))<30 & ReconX';
+        R_w = [0 -1 0; 0 0 1; -1 0 0];
+        showPointCloud(bsxfun(@plus,X3D(mask,:)*R_w,[0 0.06 1.65]))
         xlabel('x')
         ylabel('y')
         zlabel('z')
     end
+    %}
     %pause
+    im_L_p = im_L;
+    im_R_p = im_R;
+    
+    im_L   = imread([img2Path images2(i).name]);
+    im_R   = imread([img3Path images3(i).name]);
+    matcherMex('push',rgb2gray(im_L),rgb2gray(im_R));
+    set(im_plot,'CData',im_L);
+    % match features
+    matcherMex('match',2);
+    matched_features = matcherMex('get_matches',2);
+    % extract matched features
+    Mx = matched_features([1 3 5 7],:)';
+    My = matched_features([2 4 6 8],:)';
+    n_features = size(matched_features,2);
+
+    % remove outliers between all images using RANSAC
+    [x_l_p, x_r_p, idx_p] = GetInliersRANSAC([Mx(:,1) My(:,1)],[Mx(:,2) My(:,2)],0.005,10000);
+    ReconX(idx_p) = 1;
+
+    % perform linear triangulation of points
+    R_p_L = Rr_set{3};
+    R_p_R = Rr_set{4};
+    C_p_L = Cr_set{3};
+    C_p_R = Cr_set{4};
+    X_p = LinearTriangulation(K, C_p_L, R_p_L, C_p_R, R_p_R, x_l_p, x_r_p);
+
+    % perfrom nonlinear triangulation of points
+    X_p = NonlinearTriangulation( K, C_p_L, R_p_L, C_p_R, R_p_R, x_l_p, x_r_p, X_p);
 end
 
 %% close matcher

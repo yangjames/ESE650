@@ -6,10 +6,6 @@ img2Path = '../dataset/sequences/05/image_2/';
 imgType = '*.png';
 images2 = dir([img2Path imgType]);
 
-%{
-img3Path = '../dataset/sequences/05/image_3/';
-images3 = dir([img3Path imgType]);
-%}
 K = [7.188560000000e+02 0.000000000000e+00 6.071928000000e+02;...
     0.000000000000e+00 7.188560000000e+02 1.852157000000e+02;...
     0.000000000000e+00 0.000000000000e+00 1.000000000000e+00];
@@ -55,61 +51,15 @@ matched_indices = matcherMex('get_indices',0)';
 Mx = features(:,[1 3]);
 My = features(:,[2 4]);
 
+mask = all(bsxfun(@gt, features, repmat(ground_bounds(1:2),1,2)) & bsxfun(@lt, features, repmat(ground_bounds(3:4),1,2)),2);
 % get rid of outliers
 V = 0;
-while V < 0.35*prod(imsize(1:2))
-    [~, ~, inliers] = GetInliersRANSAC([Mx(:,1) My(:,1)], [Mx(:,2),My(:,2)],0.005,10000);
-    x1 = [Mx(inliers,1) My(inliers,1)];
-    x2 = [Mx(inliers,2) My(inliers,2)];
-    [~,V]=convhull(x1(:,1),x1(:,2));
-end
+[~, ~, inliers] = GetInliersRANSAC([Mx(:,1) My(:,1)], [Mx(:,2),My(:,2)],0.005,10000);
+x1 = [Mx(inliers' & mask,1) My(inliers' & mask,1)];
+x2 = [Mx(inliers' & mask,2) My(inliers' & mask,2)];
 
-% estimate pose (unscaled)
-F = EstimateFundamentalMatrix(x1, x2);
-E = EssentialMatrixFromFundamentalMatrix(F,K);
-
-[Cset, Rset] = ExtractCameraPose(E);
-
-% triangulate and resolve chirality
-Xset = cell(4,1);
-for i = 1 : 4
-    Xset{i} = LinearTriangulation(K, zeros(3,1), eye(3), Cset{i}, Rset{i}, x1, x2);    
-end
-[C, R, X] = DisambiguateCameraPose(Cset, Rset, Xset);
-
-X = NonlinearTriangulation(K, zeros(3,1), eye(3), C, R, x1, x2, X);
-
-Cr_set{1} = zeros(3,1);
-Rr_set{1} = eye(3,3);
-Cr_set{2} = C;
-Rr_set{2} = R;
 
 %%
-figure(1)
-clf
-mask = X(:,3) > 0 & sqrt(sum(X.^2,2)) < 3;
-showPointCloud(X(mask,:)*R_w')
-xlabel('x')
-ylabel('y')
-zlabel('z')
-
-P1 = K*Rr_set{1}*[eye(3) -Cr_set{1}];
-X_aug = [X ones(size(X,1),1)];
-x1_p = bsxfun(@rdivide,P1(1:2,:)*X_aug',P1(3,:)*X_aug')';
-
-P2 = K*Rr_set{2}*[eye(3) -Cr_set{2}];
-x2_p = bsxfun(@rdivide,P2(1:2,:)*X_aug',P2(3,:)*X_aug')';
-
 figure(2)
 clf
-imshow(im2_prev)
-hold on
-plot(x1_p(:,1),x1_p(:,2),'r*')
-plot(x1(:,1),x1(:,2),'b*')
-
-figure(3)
-clf
-imshow(im2_rgb)
-hold on
-plot(x2_p(:,1),x2_p(:,2),'r*')
-plot(x2(:,1),x2(:,2),'b*')
+showMatchedFeatures(im2_prev,im2_rgb,x1,x2)
