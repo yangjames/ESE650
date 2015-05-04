@@ -12,6 +12,7 @@ P = reshape(V(:,end)/V(end,end),4,3)';
 H = K\P;
 
 [UR,~,UV] = svd(H(:,1:3));
+
 R = sign(det(UR*UV'))*UR*UV';
 C = -R'*H(:,4);
 

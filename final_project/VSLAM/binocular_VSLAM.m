@@ -2,10 +2,11 @@ clear all
 close all
 
 addpath('../libviso2/matlab/')
-
+vid = VideoWriter('reconstruct_0_1');
+open(vid)
 %% load data
 imgType = '*.png';
-sequence  = '../dataset/sequences/05/';
+sequence  = '../dataset/sequences/00/';
 
 img2Path = [sequence 'image_2/'];
 images2 = dir([img2Path imgType]);
@@ -22,8 +23,8 @@ K = [7.188560000000e+02 0.000000000000e+00 6.071928000000e+02;...
 %% initialize feature matcher
 param.nms_n                  = 2;   % non-max-suppression: min. distance between maxima (in pixels)
 param.nms_tau                = 50;  % non-max-suppression: interest point peakiness threshold
-param.match_binsize          = 50;  % matching bin width/height (affects efficiency only)
-param.match_radius           = 200; % matching radius (du/dv in pixels)
+param.match_binsize          = 100;  % matching bin width/height (affects efficiency only)
+param.match_radius           = 300; % matching radius (du/dv in pixels)
 param.match_disp_tolerance   = 1;   % du tolerance for stereo matches (in pixels)
 param.outlier_disp_tolerance = 5;   % outlier removal: disparity tolerance (in pixels)
 param.outlier_flow_tolerance = 5;   % outlier removal: flow tolerance (in pixels)
@@ -40,7 +41,7 @@ num_images = min(length(images2),length(images3));
 %% run VSLAM
 debug_flag = true;
 
-start_point = 90;
+start_point = 1;
 % get initial features
 im_L_p = imread([img2Path images2(start_point).name]);
 im_R_p = imread([img3Path images3(start_point).name]);
@@ -81,10 +82,12 @@ R_w = [0 1 0; 0 0 1; -1 0 0];
 pos = [0 0.06 1.65 0 -0.48 1.65]';
 X = [];
 C = [];
-%X = bsxfun(@plus,X_p*R_w,[0 0.06 1.65]);
 
-figure(2)
+%% start path and feature plot
+figure(1)
+%figure('units','normalized','outerposition',[0 0 1 1])
 clf
+%subplot(3,1,1)
 path_plot_L = plot3(0,0,0,'r-');
 hold on
 path_plot_R = plot3(0,0,0,'b-');
@@ -94,11 +97,12 @@ xlabel('x')
 ylabel('y')
 zlabel('z')
 
-figure(10)
-clf
+figure(2)
+subplot(3,1,2)
 im_plot = imshow(im_L);
 hold on
 feature_plot = plot(0,0,'r*');
+
 for i = start_point+2:num_images
     %% get pose of left and right cameras at next time frame
     x_L = [Mx(idx_p,3) My(idx_p,3)];%feature_L(idx_p,:);
@@ -172,17 +176,20 @@ for i = start_point+2:num_images
     R_R = Rr_set{4};
     
     %% store position and reconstruction data and plot
-    pos = [pos [R_w'*R_L*C_L+[0 0.06 1.65]';R_w'*R_R*C_R+[0 0.06 1.65]']];
+    pos = [pos [R_w'*(R_L'*C_L)+[0 0.06 1.65]';R_w'*(R_R*C_R)+[0 0.06 1.65]']];
     set(path_plot_L,'xdata',pos(1,:),'ydata',pos(2,:),'zdata',pos(3,:));
     set(path_plot_R,'xdata',pos(4,:),'ydata',pos(5,:),'zdata',pos(6,:));
     
     X = [X; bsxfun(@plus,X3D(ReconX,:)*R_w,[0 0.06 2*1.65])];
     C = [C; C3D(ReconX,:)];
-    figure(1)
-    clf
+    figure(3)
+    %clf
+    %subplot(3,1,3)
     mask = sqrt(sum(bsxfun(@minus,X,pos(1:3,end)').^2,2)) < 30;% & (X(:,3)-1.65 > 0.1);
     showPointCloud(X(mask,:), C(mask,:));
     drawnow
+    frame = getframe(gca);
+    writeVideo(vid,frame);
 
     %% get new images and process them
     % match features
@@ -223,4 +230,6 @@ for i = start_point+2:num_images
 end
 
 %% close matcher
+fprintf('\n')
+close(vid)
 matcherMex('close');
