@@ -2,11 +2,11 @@ clear all
 close all
 
 addpath('../libviso2/matlab/')
-vid = VideoWriter('reconstruct_0_1');
+vid = VideoWriter('reconstruct_1_1');
 open(vid)
 %% load data
 imgType = '*.png';
-sequence  = '../dataset/sequences/00/';
+sequence  = '../dataset/sequences/01/';
 
 img2Path = [sequence 'image_2/'];
 images2 = dir([img2Path imgType]);
