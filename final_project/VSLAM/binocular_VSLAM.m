@@ -32,6 +32,7 @@ param.half_resolution        = 1;   % 0=disabled,1=match at half resolution, ref
 param.refinement             = 2;   % refinement (0=none,1=pixel,2=subpixel)
 
 % init matcher
+matcherMex('close');
 matcherMex('init',param);
 
 num_images = min(length(images2),length(images3));
@@ -39,13 +40,14 @@ num_images = min(length(images2),length(images3));
 %% run VSLAM
 debug_flag = true;
 
+start_point = 90;
 % get initial features
-im_L_p = imread([img2Path images2(1).name]);
-im_R_p = imread([img3Path images3(1).name]);
+im_L_p = imread([img2Path images2(start_point).name]);
+im_R_p = imread([img3Path images3(start_point).name]);
 matcherMex('push',rgb2gray(im_L_p),rgb2gray(im_R_p));
 
-im_L   = imread([img2Path images2(2).name]);
-im_R   = imread([img3Path images3(2).name]);
+im_L   = imread([img2Path images2(start_point+1).name]);
+im_R   = imread([img3Path images3(start_point+1).name]);
 matcherMex('push',rgb2gray(im_L),rgb2gray(im_R));
 
 im_size = size(im_L);
@@ -97,7 +99,7 @@ clf
 im_plot = imshow(im_L);
 hold on
 feature_plot = plot(0,0,'r*');
-for i = 3:num_images
+for i = start_point+2:num_images
     %% get pose of left and right cameras at next time frame
     x_L = [Mx(idx_p,3) My(idx_p,3)];%feature_L(idx_p,:);
     C_pnp_L=[];
@@ -161,8 +163,8 @@ for i = 3:num_images
     My_bundle = matched_features([2 4 6 8],:)';
     Cr_set = {C_p_L, C_p_R, C_L, C_R};
     Rr_set = {R_p_L, R_p_R, R_L, R_R};
-    disp('Bundle adjustment');
-    [Cr_set, Rr_set, X3D] = BundleAdjustment(K, Cr_set, Rr_set, X3D, ReconX, Mx_bundle, My_bundle);
+    %disp('Bundle adjustment');
+    %[Cr_set, Rr_set, X3D] = BundleAdjustment(K, Cr_set, Rr_set, X3D, ReconX, Mx_bundle, My_bundle);
 
     C_L = Cr_set{3};
     C_R = Cr_set{4};
@@ -183,15 +185,21 @@ for i = 3:num_images
     drawnow
 
     %% get new images and process them
+    % match features
     im_L_p = im_L;
     im_R_p = im_R;
-    
     im_L   = imread([img2Path images2(i).name]);
     im_R   = imread([img3Path images3(i).name]);
+       
+    %{
+    matcherMex('close');
+    matcherMex('init',param);
+    matcherMex('push',rgb2gray(im_L_p), rgb2gray(im_R_p));
+    %}
     matcherMex('push',rgb2gray(im_L),rgb2gray(im_R));
     set(im_plot,'CData',im_L);
     
-    % match features
+
     matcherMex('match',2);
     matched_features = matcherMex('get_matches',2);
     % extract matched features
