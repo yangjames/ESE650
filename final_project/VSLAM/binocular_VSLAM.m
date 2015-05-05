@@ -2,8 +2,8 @@ clear all
 close all
 
 addpath('../libviso2/matlab/')
-vid = VideoWriter('reconstruct_1_1');
-open(vid)
+%vid = VideoWriter('reconstruct_1_1');
+%open(vid)
 %% load data
 imgType = '*.png';
 sequence  = '../dataset/sequences/01/';
@@ -62,11 +62,26 @@ matched_features = matcherMex('get_matches',2);
 Mx = matched_features([1 3 5 7],:)';
 My = matched_features([2 4 6 8],:)';
 n_features = size(matched_features,2);
-
+%{
+figure(1)
+clf
+imshow(im_L_p)
+hold on
+plot(matched_features(1,:),matched_features(2,:),'g*')
+%}
 % remove outliers between all images using RANSAC
 [x_l_p, x_r_p, idx_p] = GetInliersRANSAC([Mx(:,1) My(:,1)],[Mx(:,2) My(:,2)],0.05,1000);
 ReconX(idx_p) = 1;
-
+%{
+figure(2)
+clf
+imshow(im_L_p)
+hold on
+plot(x_l_p(:,1),x_l_p(:,2),'g*')
+drawnow
+while(1)
+end
+%}
 % perform linear triangulation of points
 R0 = [1 0 0; 0 cos(0.08) -sin(0.08); 0 sin(0.08) cos(0.08)];
 R_p_L = R0;
@@ -74,10 +89,34 @@ R_p_R = R0;
 C_p_L = zeros(3,1);
 C_p_R = -[0.54 0 0]';
 X_p = LinearTriangulation(K, C_p_L, R_p_L, C_p_R, R_p_R, x_l_p, x_r_p);
-
+%{
+figure(1)
+clf
+imshow(im_L_p)
+hold on
+P = K*R0*[eye(3) -C_p_L];
+x_projected = bsxfun(@rdivide,P(1:2,:)*[X_p ones(sum(idx_p),1)]',P(3,:)*[X_p ones(sum(idx_p),1)]')';
+plot(x_projected(:,1),x_projected(:,2),'g*')
+plot(x_l_p(:,1),x_l_p(:,2),'*','color',[1 .5 0])
+drawnow
+while(1)
+end
+%}
 % perfrom nonlinear triangulation of points
 X_p = NonlinearTriangulation( K, C_p_L, R_p_L, C_p_R, R_p_R, x_l_p, x_r_p, X_p);
-
+%{
+figure(1)
+clf
+imshow(im_L_p)
+hold on
+P = K*R0*[eye(3) -C_p_L];
+x_projected = bsxfun(@rdivide,P(1:2,:)*[X_p ones(sum(idx_p),1)]',P(3,:)*[X_p ones(sum(idx_p),1)]')';
+plot(x_projected(:,1),x_projected(:,2),'g*')
+plot(x_l_p(:,1),x_l_p(:,2),'*','color',[1 .5 0])
+drawnow
+while(1)
+end
+%}
 R_w = [0 1 0; 0 0 1; -1 0 0];
 pos = [0 0.06 1.65 0 -0.48 1.65]';
 X = [];
@@ -128,7 +167,19 @@ for i = start_point+2:num_images
     end
     disp('Nonlinear PnP');
     [C_R, R_R] = NonlinearPnP(X_p, x_R, K, C_pnp_R, R_pnp_R);
-    
+    %{
+    figure(1)
+    clf
+    imshow(im_L)
+    hold on
+    P = K*R_pnp_L*[eye(3) -C_pnp_L];
+    x_projected = bsxfun(@rdivide,P(1:2,:)*[X_p ones(sum(idx_p),1)]',P(3,:)*[X_p ones(sum(idx_p),1)]')';
+    plot(x_projected(:,1),x_projected(:,2),'g*')
+    plot(x_L(:,1),x_L(:,2),'*','color',[1 .5 0])
+    drawnow
+    while(1)
+    end
+    %}
     %% triangulate points between new frames
     % remove outliers between all images using RANSAC
     [x_l, x_r, idx] = GetInliersRANSAC([Mx(:,3) My(:,3)],[Mx(:,4) My(:,4)],0.05,1000);
